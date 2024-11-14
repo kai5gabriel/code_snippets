@@ -1,0 +1,60 @@
+import lightgbm as lgb
+import numpy as np
+import pandas as pd
+from bayescv import BayesSearchCV
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+from sklearn.datasets import load_breast_cancer
+
+# Load a sample dataset (you can replace this with your own dataset)
+data = load_breast_cancer()
+X = data.data
+y = data.target
+
+# Split the dataset into training and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Define the LightGBM model
+model = lgb.LGBMClassifier()
+
+# Define the hyperparameter search space
+param_space = {
+    'boosting_type': ['gbdt', 'dart', 'goss', 'rf'],  # Boosting type
+    'objective': ['binary'],  # Objective for binary classification
+    'metric': ['binary_error', 'auc'],  # Evaluation metric
+    'num_leaves': (10, 100),  # Number of leaves in each tree
+    'max_depth': (3, 15),  # Maximum depth of the tree
+    'learning_rate': (0.01, 0.2, 'uniform'),  # Learning rate (uniform distribution)
+    'n_estimators': (50, 1000),  # Number of trees (estimators)
+    'subsample': (0.5, 1.0, 'uniform'),  # Subsample ratio
+    'colsample_bytree': (0.5, 1.0, 'uniform'),  # Feature fraction
+    'min_child_samples': (5, 50),  # Minimum number of samples per leaf
+    'lambda_l1': (0.0, 1.0),  # L1 regularization
+    'lambda_l2': (0.0, 1.0),  # L2 regularization
+    'feature_fraction': (0.5, 1.0, 'uniform')  # Fraction of features for each tree
+}
+
+# Initialize the BayesSearchCV for Bayesian optimization
+bayes_search = BayesSearchCV(
+    model,  # The model we are tuning
+    param_space,  # The hyperparameter space to search over
+    n_iter=50,  # Number of evaluations (iterations) to try
+    cv=3,  # Cross-validation (3-fold)
+    n_jobs=-1,  # Use all cores for parallel processing
+    verbose=1,  # Print progress
+    random_state=42
+)
+
+# Run the optimization
+bayes_search.fit(X_train, y_train)
+
+# Best hyperparameters found by BayesSearchCV
+print("Best Hyperparameters found: ", bayes_search.best_params_)
+
+# Use the best model to make predictions
+best_model = bayes_search.best_estimator_
+
+# Evaluate on the test set
+y_pred = best_model.predict(X_test)
+accuracy = accuracy_score(y_test, y_pred)
+print(f'Accuracy on test set: {accuracy:.4f}')
