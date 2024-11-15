@@ -1,0 +1,11 @@
+from sklearn.inspection import permutation_importance
+
+# Get permutation feature importance
+perm_importance = permutation_importance(model, X_test, y_test, n_repeats=10, random_state=42)
+
+# Get the importance scores
+importance_scores = perm_importance.importances_mean
+feature_importance = pd.Series(importance_scores, index=X_train.columns).sort_values(ascending=False)
+
+# Display feature importance
+print(feature_importance)
