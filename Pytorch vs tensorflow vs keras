@@ -1,0 +1,50 @@
+Pytorch Autograd:
+----------------------------------------------------------
+import torch
+
+# Create tensors with requires_grad=True to track computation
+x = torch.tensor(2.0, requires_grad=True)
+y = x ** 2  # y = x^2
+y.backward()  # Compute gradients
+
+# x.grad stores the derivative of y with respect to x
+print(x.grad)  # Output: 4.0 (dy/dx = 2 * x, with x=2)
+
+
+Manual Computation of Autograd:
+----------------------------------------------------------
+learning_rate = 0.1
+x = 2  # Example initial value
+gradient = 2 * x  # Manually compute gradient
+x = x - learning_rate * gradient  # Update step
+
+Tensorflow GradientTape:
+----------------------------------------------------------
+import tensorflow as tf
+x = tf.Variable(2.0)
+with tf.GradientTape() as tape:
+    y = x ** 2
+grad = tape.gradient(y, x)  # Computes dy/dx
+print(grad)  # Outputs the gradient (4.0)
+
+With Highlevel Apis - Keras:
+----------------------------------------------------------
+import tensorflow as tf
+from tensorflow.keras import layers, models
+
+# Define a simple model
+model = models.Sequential([
+    layers.Dense(10, activation='relu', input_shape=(5,)),
+    layers.Dense(1)
+])
+
+# Compile the model
+model.compile(optimizer='adam', loss='mse')
+
+# Generate some data
+x_train = tf.random.normal((100, 5))
+y_train = tf.random.normal((100, 1))
+
+# Train the model (no explicit GradientTape required)
+model.fit(x_train, y_train, epochs=5)
+
