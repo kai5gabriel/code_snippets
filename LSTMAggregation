@@ -1,0 +1,83 @@
+LSTM aggregation in GNNs
+
+To use the `torch_geometric.nn.aggr.LSTMAggregation` function for a heterogeneous graph neural network model, you can follow these steps:
+
+## Implementing LSTM Aggregation in a Heterogeneous GNN
+
+### 1. Import Required Modules
+
+First, import the necessary modules from PyTorch Geometric:
+
+```python
+import torch
+from torch_geometric.nn import HeteroConv
+from torch_geometric.nn.aggr import LSTMAggregation
+```
+
+### 2. Define Your Heterogeneous GNN Model
+
+Create a class for your heterogeneous GNN model that incorporates LSTM aggregation:
+
+```python
+class HeteroGNNWithLSTMAggr(torch.nn.Module):
+    def __init__(self, hidden_channels, out_channels, metadata):
+        super().__init__()
+        
+        self.convs = torch.nn.ModuleList()
+        for _ in range(2):  # Number of layers
+            conv = HeteroConv({
+                edge_type: LSTMAggregation((-1, -1), hidden_channels)
+                for edge_type in metadata[1]
+            })
+            self.convs.append(conv)
+        
+        self.lin = torch.nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, x_dict, edge_index_dict):
+        for conv in self.convs:
+            x_dict = conv(x_dict, edge_index_dict)
+            x_dict = {key: x.relu() for key, x in x_dict.items()}
+        
+        return {key: self.lin(x) for key, x in x_dict.items()}
+```
+
+### 3. Initialize and Use the Model
+
+Now you can initialize and use your heterogeneous GNN model with LSTM aggregation:
+
+```python
+# Assuming you have your heterogeneous graph data
+data = ...  # Your heterogeneous graph data
+metadata = data.metadata()
+
+model = HeteroGNNWithLSTMAggr(hidden_channels=64, out_channels=dataset.num_classes, metadata=metadata)
+
+# Forward pass
+out = model(data.x_dict, data.edge_index_dict)
+```
+
+## Important Considerations
+
+1. **Sorted Indices**: The `LSTMAggregation` function requires sorted indices as input. Ensure that your `edge_index` is sorted by destination nodes[3].
+
+2. **Non-Permutation Invariance**: Be aware that LSTM aggregation is not a permutation-invariant operator[3]. This means the order of nodes in the input can affect the output.
+
+3. **Heterogeneous Graph Adaptation**: The `HeteroConv` layer allows you to use different aggregation functions for different edge types[4]. This is crucial for heterogeneous graphs where different relationships might require different aggregation strategies.
+
+4. **Lazy Initialization**: PyTorch Geometric supports lazy initialization for heterogeneous GNNs. This allows you to use `-1` as the `in_channels` argument, enabling the framework to automatically determine the input dimensions[6].
+
+5. **Performance Considerations**: While LSTM aggregation can capture sequential information in the graph structure, it may be computationally more expensive than simpler aggregation methods like mean or sum. Consider the trade-off between model expressiveness and computational efficiency for your specific use case.
+
+By following these steps and considerations, you can effectively incorporate LSTM aggregation into your heterogeneous graph neural network model using PyTorch Geometric.
+
+Citations:
+[1] https://blog.dataiku.com/graph-neural-networks-link-prediction-part-two
+[2] https://lightning.ai/docs/pytorch/stable/notebooks/course_UvA-DL/06-graph-neural-networks.html
+[3] https://pytorch-geometric.readthedocs.io/en/2.5.1/generated/torch_geometric.nn.aggr.LSTMAggregation.html
+[4] https://docs.graphcore.ai/projects/tutorials/en/latest/pytorch_geometric/6_heterogeneous_graphs/README.html
+[5] https://github.com/pyg-team/pytorch_geometric
+[6] https://pytorch-geometric.readthedocs.io/en/2.6.0/notes/heterogeneous.html
+[7] https://github.com/pyg-team/pytorch_geometric/discussions/5999
+[8] https://www.youtube.com/watch?v=knmPoaqCoyw
+[9] https://pytorch-geometric.readthedocs.io/en/2.0.3/_modules/torch_geometric/nn/models/jumping_knowledge.html
+[10] https://www.mdpi.com/2077-0472/11/4/359
