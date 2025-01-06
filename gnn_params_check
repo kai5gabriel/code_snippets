@@ -1,0 +1,41 @@
+# Load the checkpoint
+checkpoint = torch.load('best_model.pth')
+best_params = checkpoint['params']
+best_metadata = checkpoint['metadata']
+
+# Recreate the best model
+best_model = YourGNNModel(num_features=best_params[3], hidden_channels=best_params[2], dropout_rate=best_params[1])
+best_model.load_state_dict(checkpoint['model_state_dict'])
+
+# Verify the model parameters
+print("Checking model parameters:")
+print(f"Expected parameters: {best_params}")
+
+# Function to recursively check for parameters
+def check_params(module, prefix=''):
+    for name, child in module.named_children():
+        param_name = f"{prefix}.{name}" if prefix else name
+        if isinstance(child, torch.nn.Linear):
+            print(f"{param_name} in_features: {child.in_features}, out_features: {child.out_features}")
+        elif isinstance(child, torch.nn.Dropout):
+            print(f"{param_name} dropout rate: {child.p}")
+        else:
+            check_params(child, param_name)
+
+check_params(best_model)
+
+# Check if the model is heterogeneous
+print("\nChecking if the model is heterogeneous:")
+print(f"Is heterogeneous: {hasattr(best_model, 'metadata')}")
+
+# Verify the metadata
+if hasattr(best_model, 'metadata'):
+    print("\nChecking metadata:")
+    print(f"Expected metadata: {best_metadata}")
+    print(f"Actual metadata: {best_model.metadata}")
+else:
+    print("\nModel does not have metadata attribute. It might not be a heterogeneous model.")
+
+# Print model architecture
+print("\nModel architecture:")
+print(best_model)
