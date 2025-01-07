@@ -1,0 +1,35 @@
+import pandas as pd
+import numpy as np
+
+def global_mapping_to_tensor(df, node_column):
+    """
+    Assign unique IDs to nodes and convert to a tensor-like structure.
+
+    Args:
+        df (pd.DataFrame): Input DataFrame containing node information.
+        node_column (str): Column name containing node identifiers.
+
+    Returns:
+        np.ndarray: Tensor-like array of node IDs.
+        dict: Mapping of original node values to unique IDs.
+    """
+    # Create a mapping of unique node values to IDs
+    unique_nodes = df[node_column].unique()
+    node_to_id = {node: idx for idx, node in enumerate(unique_nodes)}
+    
+    # Assign IDs to nodes
+    df['NodeID'] = df[node_column].map(node_to_id)
+    
+    # Convert to tensor-like array
+    tensor_input = np.array(df['NodeID'].values, dtype=np.int64)
+    
+    return tensor_input, node_to_id
+
+# Example usage
+data = {'Node': ['A', 'B', 'C', 'A', 'B', 'D']}
+df = pd.DataFrame(data)
+
+tensor_input, node_mapping = global_mapping_to_tensor(df, 'Node')
+
+print("Tensor input:", tensor_input)
+print("Node mapping:", node_mapping)
