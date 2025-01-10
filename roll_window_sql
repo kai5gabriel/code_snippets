@@ -1,0 +1,41 @@
+WITH base_data AS (
+    SELECT 
+        party_id,
+        CAST(trx_date AS DATE) AS trx_date, -- Convert string to date
+        txt_ip_city
+    FROM 
+        transactions
+),
+rolling_window AS (
+    SELECT 
+        a.party_id,
+        a.trx_date,
+        COUNT(DISTINCT CASE WHEN b.trx_date >= a.trx_date - INTERVAL 3 DAYS THEN b.txt_ip_city ELSE NULL END) AS distinct_cities_past_3_days,
+        COUNT(DISTINCT CASE WHEN b.trx_date >= a.trx_date - INTERVAL 7 DAYS THEN b.txt_ip_city ELSE NULL END) AS distinct_cities_past_7_days,
+        COUNT(DISTINCT CASE WHEN b.trx_date >= a.trx_date - INTERVAL 14 DAYS THEN b.txt_ip_city ELSE NULL END) AS distinct_cities_past_14_days
+    FROM 
+        base_data a
+    LEFT JOIN 
+        base_data b
+    ON 
+        a.party_id = b.party_id
+        AND b.trx_date < a.trx_date
+        AND b.trx_date >= a.trx_date - INTERVAL 14 DAYS
+    GROUP BY 
+        a.party_id, 
+        a.trx_date
+)
+SELECT 
+    a.party_id,
+    a.trx_date,
+    a.txt_ip_city,
+    rw.distinct_cities_past_3_days,
+    rw.distinct_cities_past_7_days,
+    rw.distinct_cities_past_14_days
+FROM 
+    base_data a
+LEFT JOIN 
+    rolling_window rw
+ON 
+    a.party_id = rw.party_id
+    AND a.trx_date = rw.trx_date;
