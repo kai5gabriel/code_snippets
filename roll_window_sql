@@ -1,41 +1,35 @@
 WITH base_data AS (
-    SELECT 
+    -- Step 1: Create a base table with distinct party_id and trx_date pairs
+    SELECT DISTINCT
         party_id,
-        CAST(trx_date AS DATE) AS trx_date, -- Convert string to date
-        txt_ip_city
+        CAST(trx_date AS DATE) AS trx_date  -- Convert trx_date to date type
     FROM 
         transactions
 ),
-rolling_window AS (
+joined_data AS (
+    -- Step 2: Join the base table with the original table to get the cities
     SELECT 
         a.party_id,
         a.trx_date,
-        COUNT(DISTINCT CASE WHEN b.trx_date >= a.trx_date - INTERVAL 3 DAYS THEN b.txt_ip_city ELSE NULL END) AS distinct_cities_past_3_days,
-        COUNT(DISTINCT CASE WHEN b.trx_date >= a.trx_date - INTERVAL 7 DAYS THEN b.txt_ip_city ELSE NULL END) AS distinct_cities_past_7_days,
-        COUNT(DISTINCT CASE WHEN b.trx_date >= a.trx_date - INTERVAL 14 DAYS THEN b.txt_ip_city ELSE NULL END) AS distinct_cities_past_14_days
+        b.txt_ip_city
     FROM 
         base_data a
     LEFT JOIN 
-        base_data b
+        transactions b
     ON 
         a.party_id = b.party_id
-        AND b.trx_date < a.trx_date
-        AND b.trx_date >= a.trx_date - INTERVAL 14 DAYS
-    GROUP BY 
-        a.party_id, 
-        a.trx_date
+        AND b.trx_date <= a.trx_date  -- Ensure we only look at past transactions
+        AND b.trx_date >= a.trx_date - INTERVAL 14 DAYS  -- Rolling window of 14 days
 )
 SELECT 
-    a.party_id,
-    a.trx_date,
-    a.txt_ip_city,
-    rw.distinct_cities_past_3_days,
-    rw.distinct_cities_past_7_days,
-    rw.distinct_cities_past_14_days
+    party_id,
+    trx_date,
+    COUNT(DISTINCT CASE WHEN trx_date >= trx_date - INTERVAL 3 DAYS THEN txt_ip_city END) AS distinct_cities_past_3_days,
+    COUNT(DISTINCT CASE WHEN trx_date >= trx_date - INTERVAL 7 DAYS THEN txt_ip_city END) AS distinct_cities_past_7_days,
+    COUNT(DISTINCT CASE WHEN trx_date >= trx_date - INTERVAL 14 DAYS THEN txt_ip_city END) AS distinct_cities_past_14_days
 FROM 
-    base_data a
-LEFT JOIN 
-    rolling_window rw
-ON 
-    a.party_id = rw.party_id
-    AND a.trx_date = rw.trx_date;
+    joined_data
+GROUP BY 
+    party_id, trx_date
+ORDER BY 
+    party_id, trx_date;
