@@ -1,0 +1,52 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, countDistinct
+from pyspark.sql.types import DateType
+
+# Create SparkSession
+spark = SparkSession.builder.appName("RollingWindowDistinctCities").getOrCreate()
+
+# Sample data
+data = [
+    (1, "2025-01-01", "New York"),
+    (1, "2025-01-02", "Los Angeles"),
+    (1, "2025-01-04", "New York"),
+    (1, "2025-01-07", "Chicago"),
+    (2, "2025-01-01", "Boston"),
+    (2, "2025-01-03", "Boston"),
+    (2, "2025-01-08", "Seattle")
+]
+
+columns = ["partyid", "trans_date", "city_name"]
+
+# Create DataFrame
+df = spark.createDataFrame(data, schema=columns)
+
+# Convert trans_date to DateType
+df = df.withColumn("trans_date", col("trans_date").cast(DateType()))
+
+# Function to compute distinct city count for a rolling window
+def compute_distinct_cities(df, days):
+    # Self-join to filter transactions within the rolling window
+    window_df = df.alias("a").join(
+        df.alias("b"),
+        (col("a.partyid") == col("b.partyid")) &
+        (col("b.trans_date") >= (col("a.trans_date") - expr(f"INTERVAL {days} DAYS"))) &
+        (col("b.trans_date") < col("a.trans_date")),
+        "left"
+    ).groupBy("a.partyid", "a.trans_date") \
+     .agg(countDistinct("b.city_name").alias(f"distinct_cities_past_{days}_days"))
+    
+    return window_df
+
+# Calculate distinct city counts for 3, 7, and 14-day windows
+result_3_days = compute_distinct_cities(df, 3)
+result_7_days = compute_distinct_cities(df, 7)
+result_14_days = compute_distinct_cities(df, 14)
+
+# Join the results together
+final_df = df.join(result_3_days, ["partyid", "trans_date"], "left") \
+             .join(result_7_days, ["partyid", "trans_date"], "left") \
+             .join(result_14_days, ["partyid", "trans_date"], "left")
+
+# Show the final DataFrame
+final_df.show()
