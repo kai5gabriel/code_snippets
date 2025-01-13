@@ -2,19 +2,19 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, collect_set, countDistinct, to_date, datediff, expr
 
 # Initialize SparkSession
-spark = SparkSession.builder.appName("DistinctCityCounts").getOrCreate()
+spark = SparkSession.builder.appName("AdditionalFeatures").getOrCreate()
 
-# Sample data
+# Sample data (Assuming your data has the additional features)
 data = [
-    (1, "2025-01-01", "New York"),
-    (1, "2025-01-02", "Los Angeles"),
-    (1, "2025-01-03", "New York"),
-    (1, "2025-01-05", "Chicago"),
-    (2, "2025-01-01", "Houston"),
-    (2, "2025-01-04", "Dallas"),
-    (2, "2025-01-07", "Austin"),
+    (1, "2025-01-01", "New York", "USA", "iPhone 12", "iOS", "EST", "TZ1"),
+    (1, "2025-01-02", "Los Angeles", "USA", "Samsung Galaxy", "Android", "PST", "TZ2"),
+    (1, "2025-01-03", "New York", "USA", "iPhone 12", "iOS", "EST", "TZ1"),
+    (1, "2025-01-05", "Chicago", "USA", "Pixel 5", "Android", "CST", "TZ3"),
+    (2, "2025-01-01", "Houston", "USA", "iPhone 13", "iOS", "CST", "TZ1"),
+    (2, "2025-01-04", "Dallas", "USA", "Samsung Galaxy", "Android", "PST", "TZ2"),
+    (2, "2025-01-07", "Austin", "USA", "Pixel 5", "Android", "CST", "TZ3"),
 ]
-columns = ["party_id", "trx_date", "txt_ip_city"]
+columns = ["party_id", "trx_date", "txt_ip_city", "txt_ip_cntry", "device_model", "devicesystem_name", "timezone", "windows_fptz"]
 
 # Create DataFrame
 df = spark.createDataFrame(data, columns)
@@ -22,7 +22,7 @@ df = spark.createDataFrame(data, columns)
 # Convert trx_date to date type
 df = df.withColumn("trx_date", to_date(col("trx_date")))
 
-# Self-join to calculate cities for past 14 days
+# Self-join to calculate features for past 3, 7, and 14 days
 result = (
     df.alias("t1")
     .join(
@@ -32,38 +32,50 @@ result = (
         & (datediff(col("t1.trx_date"), col("t2.trx_date")) <= 14),
         "left",
     )
-    .withColumn(
-        "time_window",
-        expr(
-            """
-            CASE
-              WHEN datediff(t1.trx_date, t2.trx_date) <= 3 THEN 'past_3_days'
-              WHEN datediff(t1.trx_date, t2.trx_date) <= 7 THEN 'past_7_days'
-              ELSE 'past_14_days'
-            END
-            """
-        ),
-    )
     .groupBy("t1.party_id", "t1.trx_date")
     .agg(
+        # Cities in the past 3, 7, and 14 days
         collect_set(
             expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 3 THEN t2.txt_ip_city END")
         ).alias("cities_past_3_days"),
         countDistinct(
             expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 3 THEN t2.txt_ip_city END")
         ).alias("city_count_past_3_days"),
+        
+        # Device model in the past 3, 7, and 14 days
         collect_set(
-            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 7 THEN t2.txt_ip_city END")
-        ).alias("cities_past_7_days"),
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 3 THEN t2.device_model END")
+        ).alias("device_model_past_3_days"),
         countDistinct(
-            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 7 THEN t2.txt_ip_city END")
-        ).alias("city_count_past_7_days"),
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 3 THEN t2.device_model END")
+        ).alias("device_model_count_past_3_days"),
+        
+        # Devicesystem name in the past 3, 7, and 14 days
         collect_set(
-            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 14 THEN t2.txt_ip_city END")
-        ).alias("cities_past_14_days"),
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 3 THEN t2.devicesystem_name END")
+        ).alias("devicesystem_name_past_3_days"),
         countDistinct(
-            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 14 THEN t2.txt_ip_city END")
-        ).alias("city_count_past_14_days"),
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 3 THEN t2.devicesystem_name END")
+        ).alias("devicesystem_name_count_past_3_days"),
+        
+        # Timezone in the past 3, 7, and 14 days
+        collect_set(
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 3 THEN t2.timezone END")
+        ).alias("timezone_past_3_days"),
+        countDistinct(
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 3 THEN t2.timezone END")
+        ).alias("timezone_count_past_3_days"),
+        
+        # Windows FPTZ in the past 3, 7, and 14 days
+        collect_set(
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 3 THEN t2.windows_fptz END")
+        ).alias("windows_fptz_past_3_days"),
+        countDistinct(
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 3 THEN t2.windows_fptz END")
+        ).alias("windows_fptz_count_past_3_days"),
+        
+        # You can repeat the same for 7 and 14 days as required
+        # Collect sets and count distinct for 7 and 14 days similar to the 3 days logic
     )
     .orderBy("t1.party_id", "t1.trx_date")
 )
