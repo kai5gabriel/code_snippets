@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, collect_set, countDistinct, lit, to_date, datediff, expr
+from pyspark.sql.functions import col, collect_set, countDistinct, to_date, datediff, expr
 
 # Initialize SparkSession
 spark = SparkSession.builder.appName("DistinctCityCounts").getOrCreate()
@@ -10,9 +10,9 @@ data = [
     (1, "2025-01-02", "Los Angeles"),
     (1, "2025-01-03", "New York"),
     (1, "2025-01-05", "Chicago"),
-    (1, "2025-01-01", "Houston"),
-    (1, "2025-01-04", "Dallas"),
-    (1, "2025-01-07", "Dallas"),
+    (2, "2025-01-01", "Houston"),
+    (2, "2025-01-04", "Dallas"),
+    (2, "2025-01-07", "Austin"),
 ]
 columns = ["party_id", "trx_date", "txt_ip_city"]
 
@@ -22,7 +22,7 @@ df = spark.createDataFrame(data, columns)
 # Convert trx_date to date type
 df = df.withColumn("trx_date", to_date(col("trx_date")))
 
-# Self-join to calculate cities in the past 3, 7, and 14 days
+# Self-join to calculate cities for past 14 days
 result = (
     df.alias("t1")
     .join(
@@ -47,22 +47,22 @@ result = (
     .groupBy("t1.party_id", "t1.trx_date")
     .agg(
         collect_set(
-            expr("CASE WHEN time_window = 'past_3_days' THEN t2.txt_ip_city END")
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 3 THEN t2.txt_ip_city END")
         ).alias("cities_past_3_days"),
         countDistinct(
-            expr("CASE WHEN time_window = 'past_3_days' THEN t2.txt_ip_city END")
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 3 THEN t2.txt_ip_city END")
         ).alias("city_count_past_3_days"),
         collect_set(
-            expr("CASE WHEN time_window = 'past_7_days' THEN t2.txt_ip_city END")
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 7 THEN t2.txt_ip_city END")
         ).alias("cities_past_7_days"),
         countDistinct(
-            expr("CASE WHEN time_window = 'past_7_days' THEN t2.txt_ip_city END")
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 7 THEN t2.txt_ip_city END")
         ).alias("city_count_past_7_days"),
         collect_set(
-            expr("CASE WHEN time_window = 'past_14_days' THEN t2.txt_ip_city END")
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 14 THEN t2.txt_ip_city END")
         ).alias("cities_past_14_days"),
         countDistinct(
-            expr("CASE WHEN time_window = 'past_14_days' THEN t2.txt_ip_city END")
+            expr("CASE WHEN datediff(t1.trx_date, t2.trx_date) <= 14 THEN t2.txt_ip_city END")
         ).alias("city_count_past_14_days"),
     )
     .orderBy("t1.party_id", "t1.trx_date")
