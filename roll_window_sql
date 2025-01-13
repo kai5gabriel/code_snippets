@@ -1,35 +1,26 @@
-WITH base_data AS (
-    -- Step 1: Create a base table with distinct party_id and trx_date pairs
-    SELECT DISTINCT
-        party_id,
-        CAST(trx_date AS DATE) AS trx_date  -- Convert trx_date to date type
-    FROM 
-        transactions
-),
-joined_data AS (
-    -- Step 2: Join the base table with the original table to get the cities
-    SELECT 
-        a.party_id,
-        a.trx_date,
-        b.txt_ip_city
-    FROM 
-        base_data a
-    LEFT JOIN 
-        transactions b
-    ON 
-        a.party_id = b.party_id
-        AND b.trx_date <= a.trx_date  -- Ensure we only look at past transactions
-        AND b.trx_date >= a.trx_date - INTERVAL 14 DAYS  -- Rolling window of 14 days
+WITH past_counts AS (
+  SELECT 
+    t1.id,
+    t1.date,
+    t1.value,
+    SUM(CASE WHEN t2.date BETWEEN t1.date - INTERVAL '3 days' AND t1.date THEN 1 ELSE 0 END) AS count_past_3_days,
+    SUM(CASE WHEN t2.date BETWEEN t1.date - INTERVAL '7 days' AND t1.date THEN 1 ELSE 0 END) AS count_past_7_days,
+    SUM(CASE WHEN t2.date BETWEEN t1.date - INTERVAL '14 days' AND t1.date THEN 1 ELSE 0 END) AS count_past_14_days
+  FROM 
+    your_table t1
+  LEFT JOIN 
+    your_table t2 ON t1.id = t2.id AND t2.date <= t1.date
+  GROUP BY 
+    t1.id, t1.date, t1.value
 )
 SELECT 
-    party_id,
-    trx_date,
-    COUNT(DISTINCT CASE WHEN trx_date >= trx_date - INTERVAL 3 DAYS THEN txt_ip_city END) AS distinct_cities_past_3_days,
-    COUNT(DISTINCT CASE WHEN trx_date >= trx_date - INTERVAL 7 DAYS THEN txt_ip_city END) AS distinct_cities_past_7_days,
-    COUNT(DISTINCT CASE WHEN trx_date >= trx_date - INTERVAL 14 DAYS THEN txt_ip_city END) AS distinct_cities_past_14_days
+  id,
+  date,
+  value,
+  count_past_3_days,
+  count_past_7_days,
+  count_past_14_days
 FROM 
-    joined_data
-GROUP BY 
-    party_id, trx_date
+  past_counts
 ORDER BY 
-    party_id, trx_date;
+  id, date;
