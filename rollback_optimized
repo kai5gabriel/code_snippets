@@ -1,4 +1,49 @@
 from pyspark.sql import Window
+from pyspark.sql.functions import countDistinct, collect_set, col, to_timestamp, approx_count_distinct
+
+# Convert trx_date to timestamp
+df = df.withColumn("trx_date_ts", to_timestamp(col("trx_date")))
+
+# Define windows for past 3, 7, and 14 days using INTERVAL literals
+window_3_days = Window.partitionBy("party_id").orderBy("trx_date_ts").rangeBetween(-3 * 86400, 0)
+window_7_days = Window.partitionBy("party_id").orderBy("trx_date_ts").rangeBetween(-7 * 86400, 0)
+window_14_days = Window.partitionBy("party_id").orderBy("trx_date_ts").rangeBetween(-14 * 86400, 0)
+
+# Use intervals for the range
+df_with_window = (
+    df.withColumn("distinct_cities_past_3_days", approx_count_distinct("txt_ip_city").over(window_3_days))
+      .withColumn("distinct_cities_past_7_days", approx_count_distinct("txt_ip_city").over(window_7_days))
+      .withColumn("distinct_cities_past_14_days", approx_count_distinct("txt_ip_city").over(window_14_days))
+      .withColumn("cities_past_3_days", collect_set("txt_ip_city").over(window_3_days))
+      .withColumn("cities_past_7_days", collect_set("txt_ip_city").over(window_7_days))
+      .withColumn("cities_past_14_days", collect_set("txt_ip_city").over(window_14_days))
+)
+
+# Group by to ensure one row per `party_id` and `trx_date`
+result = df_with_window.groupBy("party_id", "trx_date").agg(
+    F.max("distinct_cities_past_3_days").alias("distinct_cities_past_3_days"),
+    F.max("distinct_cities_past_7_days").alias("distinct_cities_past_7_days"),
+    F.max("distinct_cities_past_14_days").alias("distinct_cities_past_14_days"),
+    F.collect_set("cities_past_3_days").alias("cities_past_3_days"),
+    F.collect_set("cities_past_7_days").alias("cities_past_7_days"),
+    F.collect_set("cities_past_14_days").alias("cities_past_14_days")
+)
+
+# Show results
+result.show(truncate=False)
+
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+from pyspark.sql import Window
 from pyspark.sql.functions import countDistinct, collect_set, col, to_timestamp
 
 # Convert trx_date to timestamp
