@@ -1,71 +1,65 @@
-from pyspark.sql import Window
-from pyspark.sql.functions import countDistinct, collect_set, col, to_timestamp, approx_count_distinct
+from pyspark.sql import SparkSession
+from pyspark.sql.window import Window
+from pyspark.sql.functions import collect_set, size, col, unix_timestamp, max
 
-# Convert trx_date to timestamp
-df = df.withColumn("trx_date_ts", to_timestamp(col("trx_date")))
+# Create a SparkSession
+spark = SparkSession.builder.master("local[*]").appName("DistinctCitiesCount").getOrCreate()
 
-# Define windows for past 3, 7, and 14 days using INTERVAL literals
-window_3_days = Window.partitionBy("party_id").orderBy("trx_date_ts").rangeBetween(-3 * 86400, 0)
-window_7_days = Window.partitionBy("party_id").orderBy("trx_date_ts").rangeBetween(-7 * 86400, 0)
-window_14_days = Window.partitionBy("party_id").orderBy("trx_date_ts").rangeBetween(-14 * 86400, 0)
+# Sample dataset
+data = [
+    (1, "2025-01-21", "2025-01-19", "B2"),
+    (1, "2025-01-21", "2025-01-20", "B0"),
+    (1, "2025-01-21", "2025-01-20", "B1"),
+    (1, "2025-01-21", "2025-01-15", "B1"),
+    (1, "2025-01-21", "2025-01-17", "B2"),
+    (1, "2025-01-21", "2025-01-11", "B3"),
+    (1, "2025-01-22", "2025-01-20", "Boston"),
+    (2, "2025-01-22", "2025-01-18", "Chicago"),
+    (2, "2025-01-22", "2025-01-20", "Dallas"),
+    (2, "2025-01-22", "2025-01-21", "D1"),
+    (2, "2025-01-22", "2025-01-21", "Houston"),
+]
 
-# Use intervals for the range
-df_with_window = (
-    df.withColumn("distinct_cities_past_3_days", approx_count_distinct("txt_ip_city").over(window_3_days))
-      .withColumn("distinct_cities_past_7_days", approx_count_distinct("txt_ip_city").over(window_7_days))
-      .withColumn("distinct_cities_past_14_days", approx_count_distinct("txt_ip_city").over(window_14_days))
-      .withColumn("cities_past_3_days", collect_set("txt_ip_city").over(window_3_days))
-      .withColumn("cities_past_7_days", collect_set("txt_ip_city").over(window_7_days))
-      .withColumn("cities_past_14_days", collect_set("txt_ip_city").over(window_14_days))
-)
+columns = ["PartyID", "TransactionDate", "OnlineActivityDate", "City"]
 
-# Group by to ensure one row per `party_id` and `trx_date`
-result = df_with_window.groupBy("party_id", "trx_date").agg(
-    F.max("distinct_cities_past_3_days").alias("distinct_cities_past_3_days"),
-    F.max("distinct_cities_past_7_days").alias("distinct_cities_past_7_days"),
-    F.max("distinct_cities_past_14_days").alias("distinct_cities_past_14_days"),
-    F.collect_set("cities_past_3_days").alias("cities_past_3_days"),
-    F.collect_set("cities_past_7_days").alias("cities_past_7_days"),
-    F.collect_set("cities_past_14_days").alias("cities_past_14_days")
-)
+# Create a PySpark DataFrame
+df = spark.createDataFrame(data, columns)
 
-# Show results
-result.show(truncate=False)
+# Convert date strings to date type
+df = df.withColumn("TransactionDate", col("TransactionDate").cast("date")) \
+       .withColumn("OnlineActivityDate", col("OnlineActivityDate").cast("date"))
 
+# Convert dates to milliseconds as long type (milliseconds since the epoch)
+df = df.withColumn("OnlineActivityDateMillis", unix_timestamp("OnlineActivityDate") * 1000) \
+       .withColumn("TransactionDateMillis", unix_timestamp("TransactionDate") * 1000)
 
---------------------------------------------------------------------------------------------------------------------------------
+# Define window specifications for 3, 7, and 14 days based on milliseconds
+window_3_days = Window.partitionBy("PartyID", "TransactionDate").orderBy("OnlineActivityDateMillis").rangeBetween(-3 * 24 * 60 * 60 * 1000, 0)
+window_7_days = Window.partitionBy("PartyID", "TransactionDate").orderBy("OnlineActivityDateMillis").rangeBetween(-7 * 24 * 60 * 60 * 1000, 0)
+window_14_days = Window.partitionBy("PartyID", "TransactionDate").orderBy("OnlineActivityDateMillis").rangeBetween(-14 * 24 * 60 * 60 * 1000, 0)
 
+# Filter the data to only include rows where OnlineActivityDate is before TransactionDate for each PartyID-TransactionDate pair
+filtered_df = df.filter(col("OnlineActivityDateMillis") < col("TransactionDateMillis"))
 
+# Add columns for distinct city counts in 3, 7, and 14 days windows
+result = filtered_df.withColumn("DistinctCities_3Days", size(collect_set("City").over(window_3_days))) \
+                    .withColumn("DistinctCities_7Days", size(collect_set("City").over(window_7_days))) \
+                    .withColumn("DistinctCities_14Days", size(collect_set("City").over(window_14_days))) \
+                    .withColumn("DistinctCities_3_Days_data", collect_set("City").over(window_3_days)) \
+                    .select("PartyID", "TransactionDate","DistinctCities_3Days", "DistinctCities_7Days", "DistinctCities_14Days") \
+                    .distinct() \
+                    .groupBy("PartyID", "TransactionDate") \
+                    .agg(
+                        # Use col() to reference columns in aggregation
+                        max(col("DistinctCities_3Days")).alias("DistinctCities_3Days"),
+                        max(col("DistinctCities_7Days")).alias("DistinctCities_7Days"),
+                        max(col("DistinctCities_14Days")).alias("DistinctCities_14Days")
+                    ) \
+                    .orderBy("PartyID", "TransactionDate")
 
+# Show the result
+result.show()
 
+# Stop the Spark session
+spark.stop()
 
-
-
-
-
-from pyspark.sql import Window
-from pyspark.sql.functions import countDistinct, collect_set, col, to_timestamp
-
-# Convert trx_date to timestamp
-df = df.withColumn("trx_date_ts", to_timestamp(col("trx_date")))
-
-# Define windows for past 3, 7, and 14 days using INTERVAL literals
-window_3_days = Window.partitionBy("party_id").orderBy("trx_date_ts").rangeBetween(-3 * 86400, 0)
-window_7_days = Window.partitionBy("party_id").orderBy("trx_date_ts").rangeBetween(-7 * 86400, 0)
-window_14_days = Window.partitionBy("party_id").orderBy("trx_date_ts").rangeBetween(-14 * 86400, 0)
-
-# Use intervals for the range
-result = (
-    df.withColumn("distinct_cities_past_3_days", countDistinct("txt_ip_city").over(window_3_days))
-    .withColumn("distinct_cities_past_7_days", countDistinct("txt_ip_city").over(window_7_days))
-    .withColumn("distinct_cities_past_14_days", countDistinct("txt_ip_city").over(window_14_days))
-    .withColumn("cities_past_3_days", collect_set("txt_ip_city").over(window_3_days))
-    .withColumn("cities_past_7_days", collect_set("txt_ip_city").over(window_7_days))
-    .withColumn("cities_past_14_days", collect_set("txt_ip_city").over(window_14_days))
-)
-
-# Show results
-result.select(
-    "party_id", "trx_date", "distinct_cities_past_3_days", "distinct_cities_past_7_days",
-    "distinct_cities_past_14_days", "cities_past_3_days", "cities_past_7_days", "cities_past_14_days"
-).show(truncate=False)
