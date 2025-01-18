@@ -45,7 +45,6 @@ filtered_df = df.filter(col("OnlineActivityDateMillis") < col("TransactionDateMi
 result = filtered_df.withColumn("DistinctCities_3Days", size(collect_set("City").over(window_3_days))) \
                     .withColumn("DistinctCities_7Days", size(collect_set("City").over(window_7_days))) \
                     .withColumn("DistinctCities_14Days", size(collect_set("City").over(window_14_days))) \
-                    .withColumn("DistinctCities_3_Days_data", collect_set("City").over(window_3_days)) \
                     .select("PartyID", "TransactionDate","DistinctCities_3Days", "DistinctCities_7Days", "DistinctCities_14Days") \
                     .distinct() \
                     .groupBy("PartyID", "TransactionDate") \
@@ -62,4 +61,3 @@ result.show()
 
 # Stop the Spark session
 spark.stop()
-
