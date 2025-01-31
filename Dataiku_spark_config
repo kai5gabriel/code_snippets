@@ -1,0 +1,60 @@
+Yes, **Dataiku DSS** does not natively support **direct YARN deployment** when using `SparkContext` from `SQLContext(sc)`. Instead, it primarily integrates with **Spark-on-YARN** through its built-in **Spark integration**.
+
+### **Why is `SparkContext` Not Supported for YARN Deployment?**
+1. **Dataiku's Spark Integration Uses SparkSubmit Mode**  
+   - Dataiku **does not** directly expose `SparkContext` for cluster management.
+   - Instead, Dataiku uses **Spark-submit on YARN** when running recipes.
+
+2. **Cluster Mode vs. Local Mode in Dataiku**  
+   - When you create a **Spark recipe**, it runs in **"local mode"** by default.
+   - To use YARN, you need to configure **Dataiku's Spark integration** to use a Spark cluster.
+
+---
+
+### **How to Deploy Dataiku Spark Jobs to YARN?**
+Since you are using `SQLContext(sc)`, you must configure **Dataiku's Spark settings** to run jobs on YARN.
+
+#### **Option 1: Enable Spark-on-YARN in Dataiku DSS**
+1. **Go to**: `Administration` → `Settings` → `Spark`
+2. **Set Spark execution mode to YARN**
+   - Change from **Local mode** to **YARN cluster mode**.
+   - Set `spark.master` to:  
+     ```text
+     yarn
+     ```
+   - Ensure `spark.submit.deployMode` is set to **client** or **cluster**.
+
+3. **Restart Dataiku DSS** for changes to take effect.
+
+---
+
+#### **Option 2: Use Dataiku’s Built-in Spark Integration**
+If you are writing PySpark recipes:
+- **DO NOT** manually initialize `SparkContext`. Instead, use Dataiku’s `dataiku.spark.get_spark_session()`.  
+  ```python
+  from dataiku.spark import get_spark_session
+
+  spark = get_spark_session()
+  df = spark.read.csv("/path/to/data.csv", header=True)
+  ```
+
+- Dataiku automatically configures the session to use **YARN** if it's enabled.
+
+---
+
+#### **Option 3: Use `spark-submit` Manually**
+If you need full control, manually submit your Spark job:
+
+```bash
+spark-submit --master yarn --deploy-mode cluster my_script.py
+```
+
+---
+
+### **Conclusion**
+- **Direct `SparkContext(sc)` usage does not support YARN in Dataiku DSS**.
+- **Use Dataiku’s built-in Spark integration** (`get_spark_session()`).
+- **Enable Spark-on-YARN in Dataiku's Admin settings** to run recipes on YARN.
+- **Manually submit Spark jobs using `spark-submit --master yarn`** if necessary.
+
+Would you like help debugging any specific errors? 🚀
