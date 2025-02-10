@@ -1,0 +1,89 @@
+Nearest neighbor sampling for fraud detection, especially in highly imbalanced datasets, can be used to select a subset of non-fraud records that are closest to the fraud records. This can help in creating a more balanced dataset for training models or in identifying non-fraud records that are similar to fraud records. Here's how you can implement nearest neighbor sampling using Python with libraries like `scikit-learn` and `numpy`.
+
+### Step 1: Import Necessary Libraries
+
+```python
+import numpy as np
+from sklearn.neighbors import NearestNeighbors
+from sklearn.preprocessing import StandardScaler
+import pandas as pd
+```
+
+### Step 2: Load and Prepare Your Dataset
+
+Assuming your dataset is in a DataFrame `df`, with features in columns and a target variable indicating fraud (`1`) or non-fraud (`0`).
+
+```python
+# Load dataset
+# df = pd.read_csv('your_data.csv')
+
+# Assuming 'target' is your target variable
+X = df.drop('target', axis=1)
+y = df['target']
+
+# Separate fraud and non-fraud data
+fraud_X = X[y == 1]
+non_fraud_X = X[y == 0]
+```
+
+### Step 3: Scale Data
+
+Scaling is important to ensure that all features are on the same scale, which is crucial for distance-based algorithms like nearest neighbors.
+
+```python
+# Scale data
+scaler = StandardScaler()
+fraud_X_scaled = scaler.fit_transform(fraud_X)
+non_fraud_X_scaled = scaler.transform(non_fraud_X)
+```
+
+### Step 4: Find Nearest Neighbors
+
+Use the `NearestNeighbors` class from `sklearn.neighbors` to find the nearest non-fraud records to each fraud record.
+
+```python
+# Initialize NearestNeighbors model
+nn_model = NearestNeighbors(n_neighbors=1, algorithm='auto', metric='euclidean')
+
+# Fit the model to non-fraud data
+nn_model.fit(non_fraud_X_scaled)
+
+# Find nearest neighbors for each fraud record
+distances, indices = nn_model.kneighbors(fraud_X_scaled)
+
+# Get the nearest non-fraud records
+nearest_non_fraud_X = non_fraud_X_scaled[indices.flatten()]
+```
+
+### Step 5: Combine Fraud and Nearest Non-Fraud Records
+
+Combine the fraud records with their nearest non-fraud neighbors to create a more balanced dataset for training.
+
+```python
+# Combine fraud and nearest non-fraud records
+balanced_X = np.vstack((fraud_X_scaled, nearest_non_fraud_X))
+balanced_y = np.hstack((np.ones(fraud_X.shape[0]), np.zeros(fraud_X.shape[0])))
+```
+
+### Step 6: Use the Balanced Dataset for Training
+
+Now, you can use `balanced_X` and `balanced_y` to train your model. This approach helps in focusing on the boundary between fraud and non-fraud classes.
+
+```python
+# Example: Training a simple classifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
+# Split the balanced dataset into training and validation sets
+X_train, X_val, y_train, y_val = train_test_split(balanced_X, balanced_y, test_size=0.2, random_state=42)
+
+# Train a model
+model = RandomForestClassifier()
+model.fit(X_train, y_train)
+
+# Evaluate the model
+accuracy = model.score(X_val, y_val)
+print(f"Model Accuracy: {accuracy}")
+```
+
+This code provides a basic framework for using nearest neighbor sampling to balance your dataset for fraud detection. You can adjust the number of nearest neighbors based on your specific needs and dataset characteristics.
