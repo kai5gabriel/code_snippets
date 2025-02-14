@@ -1,3 +1,11 @@
+-- Add partition filter for query optimization
+WHERE ${DKU_DST_PARTITION_COLUMN} IN (
+  SELECT DISTINCT SUBSTR(party_id,1,1) 
+  FROM input_table
+)
+
+
+
 -- Problematic query
 SELECT a.*, b.transactiondate
 FROM table_a a
