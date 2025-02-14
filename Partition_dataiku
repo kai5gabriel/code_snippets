@@ -1,3 +1,13 @@
+-- Problematic query
+SELECT a.*, b.transactiondate
+FROM table_a a
+LEFT JOIN table_b b ON a.party_id = b.party_id AND a.partyidpfx = b.partyidpfx;
+
+-- Result schema:
+| party_id | transactiondate | partyidpfx (from a) | partyidpfx (from b) | ...
+
+
+
 # In Dataiku notebook
 dku_ds = dataiku.Dataset("transactions")
 print("Active partitions:", dku_ds.list_partitions())  # Should show 0-9
