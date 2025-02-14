@@ -1,3 +1,19 @@
+SELECT 
+  party_id,
+  transaction_date,
+  COUNT(DISTINCT city) AS city_count_3d,
+  COUNT(DISTINCT country) AS country_count_3d
+FROM (
+  SELECT *
+  FROM your_partitioned_table
+  -- Partition filter applied FIRST
+  WHERE ${DKU_DST_PARTITION_COLUMN} = SUBSTR(party_id, 1, 1)
+) filtered_data
+WHERE transaction_date >= CURRENT_DATE() - INTERVAL 3 DAYS  -- Time window filter
+GROUP BY party_id, transaction_date;
+
+
+
 -- Add partition filter for query optimization
 WHERE ${DKU_DST_PARTITION_COLUMN} IN (
   SELECT DISTINCT SUBSTR(party_id,1,1) 
