@@ -1,0 +1,61 @@
+Here's how to implement discrete partitioning in Dataiku 11 using the first digit of `party_id`:
+
+## Step-by-Step Implementation
+**1. Create Partitioned Dataset**
+- In Flow view, create your dataset (e.g., HDFS, S3, or SQL table)
+- Go to **Settings > Partitioning**
+- Activate partitioning and:
+  ```markdown
+  1. Choose "Discrete" dimension type
+  2. Name dimension: `party_id_prefix`
+  3. Set pattern: `${party_id_prefix}` (matches directory structure)
+  ```
+
+**2. Configure Ingestion Recipe** (Sync/Prepare)
+```sql
+-- Use SQL expression to extract first digit
+SELECT 
+  party_id,
+  transaction_date,
+  SUBSTR(party_id, 1, 1) AS party_id_prefix
+FROM source_table
+```
+- In recipe's **Input/Output** tab:
+  ```markdown
+  1. Enable "Redispatch partitions according to input columns"
+  2. Set dependency type: **Equals**
+  3. Map input `party_id_prefix` to output partition dimension
+  ```
+
+**3. Partition Management**
+- To process specific partitions:
+  ```markdown
+  1. Right-click dataset in Flow
+  2. Choose "Build" > "Specific partitions"
+  3. Enter values like `1,3,5` (first digits to process)
+  ```
+- For full automation, use scenarios with [partition keywords](https://knowledge.dataiku.com/latest/automation/partitioning/tutorial-scenario.html) like `${ALL_PARTITIONS}`
+
+## Key Resources
+- [Column-based Partitioning Tutorial](https://knowledge.dataiku.com/latest/automation/partitioning/tutorial-column-based.html)
+- [Partition Dependency Configuration](https://knowledge.dataiku.com/latest/automation/partitioning/concept-partitioning.html)
+- [Scenario Automation with Partitions](https://knowledge.dataiku.com/latest/automation/partitioning/tutorial-scenario.html)
+
+**Important**: When using SQL-based storage, partitions are logical constructs - physical data remains in single table with `party_id_prefix` column acting as virtual partition key.
+
+Citations:
+[1] https://knowledge.dataiku.com/latest/automation/partitioning/tutorial-column-based.html
+[2] https://knowledge.dataiku.com/latest/automation/partitioning/concept-partitioning.html
+[3] https://knowledge.dataiku.com/latest/automation/partitioning/concept-jobs-partitioned-datasets.html
+[4] https://cloud.google.com/bigquery/docs/creating-partitioned-tables
+[5] https://knowledge.dataiku.com/latest/automation/partitioning/tutorial-scenario.html
+[6] https://docs.oracle.com/cd/B10500_01/server.920/a96524/c12parti.htm
+[7] https://community.dataiku.com/discussion/353/build-several-partitions-in-one-go
+[8] https://community.dataiku.com/discussion/41157/monthly-partitioning-changes-partition-column-value
+[9] https://knowledge.dataiku.com/latest/automation/partitioning/index.html
+[10] https://doc.dataiku.com/dss/11/python-api/projects.html
+[11] https://www.youtube.com/watch?v=uRwSr7xoIhU
+[12] https://www.ibm.com/docs/en/db2/11.1?topic=tables-creating-partitioned
+[13] https://doc.dataiku.com/dss/11/python-api/datasets-reference.html
+[14] https://community.dataiku.com/discussion/21519/sql-on-partitioned-table-how-to-launch-computation-on-all-partitions
+[15] https://docs.oracle.com/cd/E11882_01/server.112/e25523/part_avail.htm
