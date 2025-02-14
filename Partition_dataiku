@@ -1,3 +1,8 @@
+# In Dataiku notebook
+dku_ds = dataiku.Dataset("transactions")
+print("Active partitions:", dku_ds.list_partitions())  # Should show 0-9
+
+
 Here's how to implement discrete partitioning in Dataiku 11 using the first digit of `party_id`:
 
 ## Step-by-Step Implementation
