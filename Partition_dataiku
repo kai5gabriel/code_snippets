@@ -1,3 +1,37 @@
+
+
+
+from dataiku import spark as dkuspark
+from pyspark.sql import functions as F
+
+# Read partitioned datasets
+def read_partitioned_dataset(dataset_name):
+    dku_dataset = dkuspark.get_dataframe(dataset_name)
+    # Force partition column inclusion (if not auto-detected)
+    return dku_dataset.withColumn("partyidpfx", F.substring("party_id", 1, 1))
+
+a_df = read_partitioned_dataset("partitioned_table_a")
+b_df = read_partitioned_dataset("partitioned_table_b")
+
+# Optimized partitioned join
+joined_df = a_df.alias("a").join(
+    b_df.alias("b"),
+    (F.col("a.party_id") == F.col("b.party_id")) &
+    (F.col("a.partyidpfx") == F.col("b.partyidpfx")),
+    "left"
+).select(
+    "a.*",
+    F.col("b.transaction_date").alias("b_transaction_date")
+)
+
+# Partition-aware write
+dkuspark.write_with_partitions(
+    joined_df,
+    "output_dataset",
+    partition_columns=["partyidpfx"]
+)
+
+--------------------------------------
 SELECT 
   party_id,
   transaction_date,
