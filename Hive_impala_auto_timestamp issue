@@ -1,0 +1,77 @@
+Note the difference between Impala recipe and DSS recipe on Dataiku
+
+Hive was adding :04:00:00 timezone values to all dates eventhough I didnt specify it.
+Impala was treating everything as UTC so keeping it as 00:00:00 itself.
+
+To make Hive in Dataiku behave like Impala (retaining UTC timestamps without automatic EST conversion), follow these configurations:
+
+## 1. **Modify Dataiku's SQL Dataset Settings**
+- Set *assumed time zone* to **UTC** for Hive-bound datasets:
+  1. Open SQL dataset settings
+  2. Under *Date handling*, change "Assumed time zone" from *Local* to **UTC**[8][11]
+  3. This prevents implicit EST conversions:
+     - `2020-02-14` ➔ `2020-02-14T00:00:00Z` (no timezone offset applied)
+
+## 2. **Reconfigure Hive Server**
+Add these settings in Hive configurations (via Cloudera Manager/Dataiku admin):
+```properties
+hive.local.time.zone = UTC  # Force Hive to treat timestamps as UTC[1][4]
+hive.parquet.timestamp.skip.conversion = true  # Disable Parquet timezone adjustments[6][9]
+```
+
+## 3. **Adjust Hive Queries**
+Use explicit UTC declarations in Hive SQL:
+```sql
+SET hive.session.time.zone=UTC;  -- Session-level enforcement
+SELECT CAST(timestamp_col AS STRING) AS utc_str  -- Bypass automatic conversions[9][10]
+FROM table;
+```
+
+## Key Differences After Configuration
+| Aspect                | Modified Hive Behavior          | Impala Default Behavior         |
+|-----------------------|---------------------------------|----------------------------------|
+| Timestamp storage     | UTC (raw, no conversion)        | UTC                              |
+| Query output          | `00:00:00Z` format              | `00:00:00Z` format               |
+| Parquet handling      | Skips TZ conversions            | Native UTC interpretation       |
+| Session overrides     | Explicit `SET TIMEZONE` required| Uses `‑‑use_local_tz` flags[7]   |
+
+## Verification Steps
+1. Run `SELECT CURRENT_TIMESTAMP` in both engines
+2. Compare outputs - they should now match with UTC timestamps
+3. Validate Parquet file timestamps using:
+   ```bash
+   parquet-tools inspect file.parquet  # Check raw timestamp values[6]
+   ```
+
+This configuration aligns Hive's timestamp handling with Impala's UTC-first approach while maintaining compatibility with Parquet files written by either engine[7][9].
+
+Citations:
+[1] https://docs.cloudera.com/data-warehouse/1.5.1/managing-warehouses/topics/dw-virtual-warehouse-configure-timezone.html
+[2] https://doc.dataiku.com/dss/latest/preparation/dates.html
+[3] https://community.dataiku.com/discussion/41938/changing-dataikus-timezone-for-dss-formulas
+[4] https://docs.cloudera.com/data-warehouse/cloud/managing-warehouses/topics/dw-virtual-warehouse-configure-timezone.html
+[5] https://community.dataiku.com/discussion/44336/configurable-timezone-display-for-date-columns-beyond-utc-only
+[6] https://boristyukin.com/watch-out-for-timezones-with-sqoop-hive-impala-and-spark-2/
+[7] https://impala.apache.org/docs/build/html/topics/impala_timestamp.html
+[8] https://doc.dataiku.com/dss/latest/schemas/dates.html
+[9] https://stackoverflow.com/questions/41831678/impala-is-converting-time-into-gmt-how-to-avoid-that
+[10] https://community.dataiku.com/discussion/26642/unwanted-time-zone-conversion-in-join-recipe-redshift
+[11] https://knowledge.dataiku.com/latest/data-preparation/dates/reference-date-handling.html
+[12] https://doc.dataiku.com/dss/latest/schemas/dates.html
+[13] https://knowledge.dataiku.com/latest/data-preparation/dates/concept-date-handling.html
+[14] https://stackoverflow.com/questions/28508640/how-to-convert-a-date-string-from-utc-to-specific-timezone-in-hive
+[15] https://community.dataiku.com/discussion/9982/create-partitions-on-hive-data
+[16] https://stackoverflow.com/questions/33556226/impala-timestamps-dont-match-hive-a-timezone-issue
+[17] https://community.cloudera.com/t5/Support-Questions/Timestamp-in-Hive-without-Timezone/m-p/105176
+[18] https://doc.dataiku.com/dss/latest/hadoop/hive.html
+[19] https://doc.dataiku.com/dss/latest/hadoop/impala.html
+[20] https://doc.dataiku.com/dss/latest/formula/index.html
+[21] https://community.dataiku.com/discussion/996/dss-is-overwriting-date-as-timestamp-in-hive
+[22] https://doc.dataiku.com/dss/latest/release_notes/2.2.html
+[23] https://community.cloudera.com/t5/Support-Questions/Writing-Timestamp-columns-in-Parquet-Files-through-HIVE/m-p/48439
+[24] https://community.dataiku.com/discussion/44336/configurable-timezone-display-for-date-columns-beyond-utc-only
+[25] https://docs.cloudera.com/runtime/7.3.1/impala-sql-reference/topics/impala-custom-timezones.html
+[26] https://community.dataiku.com/discussion/26642/unwanted-time-zone-conversion-in-join-recipe-redshift
+[27] https://gerrit.cloudera.org
+[28] https://trino.io/docs/current/connector/hive.html
+[29] https://impala.apache.org/docs/build3x/html/topics/impala_timestamp.html
