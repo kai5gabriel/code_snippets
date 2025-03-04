@@ -1,0 +1,114 @@
+import numpy as np
+import pandas as pd
+from catboost import CatBoostClassifier, Pool
+from skopt import BayesSearchCV
+from skopt.space import Real, Integer, Categorical
+from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.metrics import f1_score, classification_report, roc_auc_score
+
+# Load your data
+# df = pd.read_csv('fraud_data.csv')
+# X = df.drop('target', axis=1)
+# y = df['target']
+
+# Train-test split with stratification
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, 
+    test_size=0.2, 
+    stratify=y,
+    random_state=42
+)
+
+# Create CatBoost Pool (explanation below)
+train_pool = Pool(
+    X_train, 
+    y_train,
+    cat_features=None,  # Specify categorical features here
+    # For extreme class imbalance:
+    weight=[5000 if label == 1 else 1 for label in y_train]
+)
+
+# Bayesian search space
+param_space = {
+    'learning_rate': Real(0.005, 0.3, prior='log-uniform'),
+    'depth': Integer(4, 10),
+    'l2_leaf_reg': Real(1, 5),
+    'subsample': Real(0.6, 1.0),
+    'min_data_in_leaf': Integer(1, 50),
+    'iterations': Integer(500, 2000)
+}
+
+# Base classifier with fixed imbalance handling
+catboost_base = CatBoostClassifier(
+    scale_pos_weight=5000,
+    loss_function='Logloss',
+    eval_metric='F1',
+    thread_count=-1,
+    random_seed=42,
+    verbose=0
+)
+
+# BayesSearchCV setup
+bayes_search = BayesSearchCV(
+    estimator=catboost_base,
+    search_spaces=param_space,
+    scoring='f1',
+    cv=StratifiedKFold(n_splits=3, shuffle=True, random_state=42),
+    n_iter=50,  # Number of Bayesian iterations
+    n_jobs=1,  # CatBoost already uses all cores
+    verbose=1,
+    random_state=42
+)
+
+# Perform Bayesian search
+bayes_search.fit(X_train, y_train)
+
+# Best model from search
+best_model = bayes_search.best_estimator_
+
+# Feature importance analysis
+feature_importances = best_model.get_feature_importance()
+importance_df = pd.DataFrame({
+    'feature': X_train.columns,
+    'importance': feature_importances
+}).sort_values('importance', ascending=False)
+
+# Select top 25 features
+top_25_features = importance_df.head(25)['feature'].tolist()
+
+# Train reduced model with best params
+reduced_model = CatBoostClassifier(
+    **bayes_search.best_params_,
+    scale_pos_weight=5000,
+    loss_function='Logloss',
+    eval_metric='F1',
+    thread_count=-1,
+    random_seed=42,
+    verbose=0
+)
+
+reduced_model.fit(X_train[top_25_features], y_train)
+
+# Evaluate both models
+def evaluate_model(model, X, y):
+    preds = model.predict(X)
+    return {
+        'f1': f1_score(y, preds),
+        'roc_auc': roc_auc_score(y, model.predict_proba(X)[:, 1]),
+        'classification_report': classification_report(y, preds)
+    }
+
+full_metrics = evaluate_model(best_model, X_test, y_test)
+reduced_metrics = evaluate_model(reduced_model, X_test[top_25_features], y_test)
+
+print("Full Model Performance:")
+print(pd.DataFrame([full_metrics]))
+
+print("\nReduced Model Performance:")
+print(pd.DataFrame([reduced_metrics]))
+
+# Feature importance visualization
+plt.figure(figsize=(12, 8))
+sns.barplot(x='importance', y='feature', data=importance_df.head(25))
+plt.title('Top 25 Most Important Features')
+plt.show()
