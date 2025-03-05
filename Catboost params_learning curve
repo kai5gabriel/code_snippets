@@ -1,0 +1,129 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from catboost import CatBoostClassifier, Pool
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import roc_auc_score
+
+def plot_catboost_learning_curve(X, y, n_splits=3):
+    """
+    Plots learning curve showing model performance vs training set size.
+    
+    Parameters:
+    X (array-like): Feature matrix
+    y (array-like): Target labels
+    n_splits (int): Number of cross-validation folds
+    """
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+    train_sizes = np.linspace(0.1, 1.0, 10)  # From 10% to 100% of training data
+    train_aucs, val_aucs = [], []
+
+    for size in train_sizes:
+        size_frac = int(len(X) * size)
+        fold_train_auc, fold_val_auc = [], []
+
+        for train_idx, val_idx in skf.split(X, y):
+            # Stratified subsampling
+            X_train = X.iloc[train_idx[:size_frac]] if hasattr(X, 'iloc') else X[train_idx[:size_frac]]
+            y_train = y.iloc[train_idx[:size_frac]] if hasattr(y, 'iloc') else y[train_idx[:size_frac]]
+            X_val = X.iloc[val_idx] if hasattr(X, 'iloc') else X[val_idx]
+            y_val = y.iloc[val_idx] if hasattr(y, 'iloc') else y[val_idx]
+
+            # Initialize and train model
+            model = CatBoostClassifier(
+                auto_class_weights='Balanced',
+                iterations=500,
+                eval_metric='AUC',
+                early_stopping_rounds=50,
+                verbose=0,
+                random_state=42
+            )
+            
+            model.fit(
+                X_train, y_train,
+                eval_set=Pool(X_val, y_val),
+                use_best_model=True
+            )
+
+            # Calculate AUC scores
+            train_pred = model.predict_proba(X_train)[:, 1]
+            val_pred = model.predict_proba(X_val)[:, 1]
+            
+            fold_train_auc.append(roc_auc_score(y_train, train_pred))
+            fold_val_auc.append(roc_auc_score(y_val, val_pred))
+
+        train_aucs.append(np.mean(fold_train_auc))
+        val_aucs.append(np.mean(fold_val_auc))
+
+    # Plotting
+    plt.figure(figsize=(10, 6))
+    plt.plot(train_sizes, train_aucs, 'o-', label='Training AUC')
+    plt.plot(train_sizes, val_aucs, 'o-', label='Validation AUC')
+    plt.title('CatBoost Learning Curve (3-Fold CV)')
+    plt.xlabel('Proportion of Training Data Used')
+    plt.ylabel('AUC Score')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+# Example usage:
+# X = ...  # Your feature DataFrame or array
+# y = ...  # Your target series or array
+# plot_catboost_learning_curve(X, y, n_splits=3)
+
+
+
+
+
+from skopt import BayesSearchCV
+from catboost import CatBoostClassifier
+
+# 1. Define hyperparameter search space
+search_spaces = {
+    'iterations': (100, 1000),                # Number of trees
+    'depth': (3, 10),                         # Tree depth
+    'learning_rate': (0.001, 0.3, 'log-uniform'), 
+    'l2_leaf_reg': (1e-5, 10, 'log-uniform'), # Regularization
+    'random_strength': (1e-9, 10, 'log-uniform'),
+}
+
+# 2. Initialize BayesSearchCV
+bayes_search = BayesSearchCV(
+    estimator=CatBoostClassifier(
+        auto_class_weights='Balanced',
+        eval_metric='AUC',
+        verbose=0,
+        early_stopping_rounds=50
+    ),
+    search_spaces=search_spaces,
+    scoring='roc_auc',
+    cv=3,                                      # 3-fold cross-validation
+    n_iter=30,                                 # Number of optimization steps
+    n_jobs=-1,
+    random_state=42
+)
+
+# 3. Run hyperparameter tuning
+bayes_search.fit(X_train, y_train, eval_set=(X_val, y_val), verbose=0)
+
+# 4. Extract and sanitize best parameters
+best_params = bayes_search.best_params_
+
+# Remove non-CatBoost parameters accidentally added by BayesSearchCV
+catboost_valid_params = CatBoostClassifier().get_params().keys()
+best_params_filtered = {k: v for k, v in best_params.items() if k in catboost_valid_params}
+
+# 5. Initialize new model with best parameters
+optimized_model = CatBoostClassifier(
+    **best_params_filtered,
+    auto_class_weights='Balanced',
+    eval_metric='AUC',
+    verbose=100
+)
+
+# 6. Train on full dataset
+optimized_model.fit(
+    X_train_full, 
+    y_train_full,
+    eval_set=(X_val, y_val),
+    use_best_model=True
+)
