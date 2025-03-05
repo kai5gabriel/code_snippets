@@ -1,0 +1,93 @@
+Here's the modified learning curve code that uses **PR AUC (Average Precision)** instead of ROC AUC, which is more appropriate for imbalanced datasets like fraud detection:
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+from catboost import CatBoostClassifier, Pool
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import average_precision_score  # Changed to PR AUC metric
+
+def plot_pr_learning_curve(X, y, n_splits=3):
+    """
+    Plots learning curve using PR AUC (Average Precision) for imbalanced data.
+    """
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+    train_sizes = np.linspace(0.1, 1.0, 10)
+    train_pr_aucs, val_pr_aucs = [], []  # Renamed variables
+
+    for size in train_sizes:
+        size_frac = int(len(X) * size)
+        fold_train_pr, fold_val_pr = [], []
+
+        for train_idx, val_idx in skf.split(X, y):
+            X_train = X.iloc[train_idx[:size_frac]] if hasattr(X, 'iloc') else X[train_idx[:size_frac]]
+            y_train = y.iloc[train_idx[:size_frac]] if hasattr(y, 'iloc') else y[train_idx[:size_frac]]
+            X_val = X.iloc[val_idx] if hasattr(X, 'iloc') else X[val_idx]
+            y_val = y.iloc[val_idx] if hasattr(y, 'iloc') else y[val_idx]
+
+            model = CatBoostClassifier(
+                auto_class_weights='Balanced',
+                iterations=500,
+                eval_metric='AUC',  # Keep internal eval metric as-is
+                early_stopping_rounds=50,
+                verbose=0,
+                random_state=42
+            )
+            
+            model.fit(X_train, y_train, eval_set=Pool(X_val, y_val))
+
+            # Calculate PR AUC scores
+            train_pred = model.predict_proba(X_train)[:, 1]
+            val_pred = model.predict_proba(X_val)[:, 1]
+            
+            fold_train_pr.append(average_precision_score(y_train, train_pred))
+            fold_val_pr.append(average_precision_score(y_val, val_pred))
+
+        train_pr_aucs.append(np.mean(fold_train_pr))
+        val_pr_aucs.append(np.mean(fold_val_pr))
+
+    # Plotting with PR AUC labels
+    plt.figure(figsize=(10, 6))
+    plt.plot(train_sizes, train_pr_aucs, 'o-', label='Training PR AUC')
+    plt.plot(train_sizes, val_pr_aucs, 'o-', label='Validation PR AUC')
+    plt.title('CatBoost Learning Curve - PR AUC (3-Fold CV)')
+    plt.xlabel('Proportion of Training Data Used')
+    plt.ylabel('PR AUC Score')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+# Usage example:
+# plot_pr_learning_curve(X, y, n_splits=3)
+```
+
+### Key Modifications:
+1. **Metric Change**:
+   - Replaced `roc_auc_score` with `average_precision_score` (equivalent to PR AUC)
+   - Variable names changed from `*_aucs` to `*_pr_aucs`
+
+2. **Imbalance Handling**:
+   - Maintained `auto_class_weights='Balanced'`
+   - Kept stratified sampling in cross-validation
+
+3. **Interpretation Guide**:
+   ```python
+   # Expected output patterns for fraud detection (1-5% positive class)
+   # Healthy learning:          # Overfitting:
+   #   Val PR AUC ↗             #   Large gap between
+   #   Train PR AUC ↗           #   train & val curves
+   #                            #
+   #          PR AUC 0.65 ───┐  #          PR AUC 0.75 ───┐
+   #                         │  #                         │
+   #                         │  #                 Train ──┤
+   #                         │  #                         │
+   #          PR AUC 0.45 ───┘  #          PR AUC 0.35 ───┘
+   #          10%    100%       #          10%    100%
+   ```
+
+### When to Use This Version:
+- **Fraud detection** (typical imbalance 1:100 to 1:1000)
+- **Medical diagnosis** (rare disease detection)
+- **Anomaly detection** (network intrusions, manufacturing defects)
+
+This version gives better insights into performance on the minority class compared to ROC AUC.
