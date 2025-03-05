@@ -1,0 +1,123 @@
+### LightGBM Implementation with PR AUC Explanation  
+**First install LightGBM if needed:**  
+```bash
+pip install lightgbm
+```
+
+---
+
+### **Code for LightGBM with Cross-Validation and Threshold Tuning**
+```python
+import numpy as np
+import lightgbm as lgb
+from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.metrics import roc_auc_score, average_precision_score, f1_score, precision_recall_curve
+
+# 1. Prepare data
+X = ...  # Feature matrix
+y = ...  # Target (1=fraud, 0=legitimate)
+
+# Stratified train-test split
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, stratify=y, random_state=42
+)
+
+# 2. Cross-validation setup
+N_SPLITS = 5
+skf = StratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=42)
+oof_preds = np.zeros(len(X_train))
+best_iterations = []
+thresholds = []
+
+# 3. Cross-validation loop
+for fold, (train_idx, val_idx) in enumerate(skf.split(X_train, y_train)):
+    X_fold_train, y_fold_train = X_train.iloc[train_idx], y_train.iloc[train_idx]
+    X_fold_val, y_fold_val = X_train.iloc[val_idx], y_train.iloc[val_idx]
+    
+    # Initialize LightGBM with class weighting
+    model = lgb.LGBMClassifier(
+        class_weight='balanced',    # Handles class imbalance
+        n_estimators=1000,
+        learning_rate=0.05,
+        metric='auc',               # ROC AUC by default (see explanation below)
+        early_stopping_rounds=50,
+        random_state=42
+    )
+    
+    model.fit(
+        X_fold_train, y_fold_train,
+        eval_set=[(X_fold_val, y_fold_val)],
+        verbose=0
+    )
+    
+    # Store best iteration and predictions
+    best_iterations.append(model.best_iteration_)
+    oof_preds[val_idx] = model.predict_proba(X_fold_val)[:, 1]
+    
+    # Optimal F1 threshold for this fold
+    precision, recall, thresh = precision_recall_curve(y_fold_val, oof_preds[val_idx])
+    f1 = (2 * precision * recall) / (precision + recall + 1e-9)
+    thresholds.append(thresh[np.argmax(f1)])
+
+# 4. Determine final parameters
+avg_best_iteration = int(np.mean(best_iterations))
+final_threshold = np.mean(thresholds)  # Or use global optimization below
+
+# Global threshold using all OOF predictions
+precision, recall, thresh = precision_recall_curve(y_train, oof_preds)
+f1 = (2 * precision * recall) / (precision + recall + 1e-9)
+global_threshold = thresh[np.argmax(f1)]
+
+# 5. Train final model
+final_model = lgb.LGBMClassifier(
+    class_weight='balanced',
+    n_estimators=avg_best_iteration,
+    random_state=42
+).fit(X_train, y_train)
+
+# 6. Evaluate on test set
+test_proba = final_model.predict_proba(X_test)[:, 1]
+
+# ROC AUC (default metric)
+test_roc_auc = roc_auc_score(y_test, test_proba)
+print(f"Test ROC AUC: {test_roc_auc:.3f}")
+
+# PR AUC (more relevant for imbalance)
+test_pr_auc = average_precision_score(y_test, test_proba)
+print(f"Test PR AUC: {test_pr_auc:.3f}")
+
+# F1 with optimized threshold
+test_pred = (test_proba >= global_threshold).astype(int)
+test_f1 = f1_score(y_test, test_pred)
+print(f"Test F1 (Threshold {global_threshold:.3f}): {test_f1:.3f}")
+```
+
+---
+
+### **Key Differences from CatBoost**  
+| **Aspect**          | **LightGBM**                                  | **CatBoost**                                   |  
+|----------------------|-----------------------------------------------|------------------------------------------------|  
+| Class Balancing      | `class_weight='balanced'`                     | `auto_class_weights='Balanced'`                |  
+| Metric Specification | `metric='auc'` (ROC) or `metric='average_precision'` (PR) | `eval_metric='AUC'` (ROC) or `eval_metric='PRAUC'` |  
+| Early Stopping       | Built into `fit()` with `early_stopping_rounds` | Explicit `early_stopping_rounds` parameter     |  
+
+---
+
+### **Answer: What Does `eval_metric='AUC'` Signify?**  
+In **both LightGBM and CatBoost**, specifying `eval_metric='AUC'` refers to **ROC AUC** (Receiver Operating Characteristic Area Under the Curve). This is true even for imbalanced datasets.  
+
+If you want **PR AUC** (Precision-Recall AUC, better for imbalance), use:  
+- **LightGBM**: `metric='average_precision'`  
+- **CatBoost**: `eval_metric='PRAUC'`  
+
+---
+
+### **When to Use Which AUC**  
+| **Scenario**                | **Recommended Metric** |  
+|------------------------------|-------------------------|  
+| Balanced classes             | ROC AUC                 |  
+| Imbalanced classes (e.g., fraud) | PR AUC (via `average_precision_score`) |  
+| Threshold-agnostic evaluation | ROC AUC                 |  
+| Actionable predictions       | PR AUC + F1 threshold   |  
+
+This implementation gives you a fraud detection pipeline optimized for both class imbalance and actionable decision-making.
