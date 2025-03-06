@@ -1,3 +1,110 @@
+Here's the complete and corrected implementation of the custom early stopper for LightGBM with imbalanced classes:
+
+```python
+from lightgbm.callback import EarlyStopping, CallbackEnv
+
+class ImbalanceStopper(EarlyStopping):
+    """Custom early stopping that considers both average precision plateau and log loss degradation"""
+    def __init__(self, stopping_rounds: int, ap_tolerance: float = 1e-4, 
+                 logloss_tolerance: float = 1e-4, verbose: int = 0):
+        super().__init__(stopping_rounds=stopping_rounds, verbose=verbose)
+        self.ap_tolerance = ap_tolerance
+        self.logloss_tolerance = logloss_tolerance
+        self.ap_history = []
+        self.logloss_history = []
+        
+    def _should_stop(self, env: CallbackEnv, eval_name: str, 
+                   metric: str, cur_rounds: int) -> bool:
+        # Extract current iteration's metrics
+        current_ap = None
+        current_logloss = None
+        
+        # Parse evaluation results (handles multiple metrics)
+        for eval_result in env.evaluation_result_list:
+            if eval_result[0] == 'average_precision':
+                current_ap = eval_result[1]
+            elif eval_result[0] == 'log_loss':
+                current_logloss = eval_result[1]
+        
+        # Fallback to parent if metrics not found
+        if current_ap is None or current_logloss is None:
+            return super()._should_stop(env, eval_name, metric, cur_rounds)
+        
+        # Update history buffers
+        self.ap_history.append(current_ap)
+        self.logloss_history.append(current_logloss)
+        
+        # Check if enough history exists
+        if len(self.ap_history)  self.logloss_tolerance
+        
+        # Dual condition trigger
+        if ap_plateau and logloss_worsening:
+            if self.verbose:
+                print(f"\nEarly stopping: AP improvement {ap_improvement:.4f}  {self.logloss_tolerance}")
+            return True
+        
+        return super()._should_stop(env, eval_name, metric, cur_rounds)
+```
+
+### Key Features:
+1. **Dual Metric Monitoring**:
+   - Tracks **average precision plateau** (no improvement beyond tolerance)
+   - Monitors **log loss degradation** (increasing loss indicates worsening calibration)
+
+2. **Dynamic Thresholds**:
+   ```python
+   # Trigger conditions
+   ap_plateau = (best AP in window - current AP)  tolerance
+   ```
+
+3. **Implementation Logic**:
+   ```mermaid
+   graph TD
+   A[Start Iteration] --> B{Enough History?}
+   B -->|No| C[Continue Training]
+   B -->|Yes| D[Calculate AP Improvement]
+   D --> E[Calculate Logloss Degradation]
+   E --> F{AP Plateau AND Logloss Worse?}
+   F -->|Yes| G[Stop Training]
+   F -->|No| H[Parent Class Check]
+   H --> I{Parent Says Stop?}
+   I -->|Yes| G
+   I -->|No| C
+   ```
+
+### Usage Example:
+```python
+model = LGBMClassifier()
+model.fit(
+    X_train, y_train,
+    eval_set=[(X_val, y_val)],
+    eval_metric=[average_precision_score, log_loss],  # Must match names
+    callbacks=[
+        ImbalanceStopper(
+            stopping_rounds=20,
+            ap_tolerance=0.0001,  # 0.01% AP improvement threshold
+            logloss_tolerance=0.001,  # 0.1% degradation allowed
+            verbose=1
+        )
+    ]
+)
+```
+
+### Critical Parameters:
+| Parameter | Typical Value | Effect |
+|-----------|---------------|--------|
+| `stopping_rounds` | 20-50 | Number of rounds to wait for improvement |
+| `ap_tolerance` | 0.0001-0.001 | Minimum AP improvement to avoid plateau detection |
+| `logloss_tolerance` | 0.001-0.01 | Maximum log loss increase before triggering |
+
+This implementation helps prevent overfitting to the minority class while maintaining probability calibration - crucial for extreme class imbalance scenarios.
+
+
+
+
+
+
+
 Here's a modified approach for extreme class imbalance (1:60,000 ratio) using LightGBM with Bayesian optimization and specialized techniques:
 
 ```python
