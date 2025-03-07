@@ -1,0 +1,13 @@
+from lightgbm import LGBMClassifier
+from sklearn.calibration import CalibratedClassifierCV
+
+# Extract the best parameters from BayesSearchCV
+best_params = opt.best_params_
+
+# Initialize and fit the model on your training data
+model = LGBMClassifier(**best_params)
+model.fit(X_train, y_train)
+
+# Calibrate using the fitted model and your calibration (validation) set
+calibrated = CalibratedClassifierCV(model, method='sigmoid', cv='prefit')
+calibrated.fit(X_val, y_val)
