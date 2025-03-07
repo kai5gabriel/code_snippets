@@ -1,0 +1,135 @@
+Here's how to effectively load and process chunked data in Dataiku after implementing chunking, with both memory-efficient and persistent storage approaches:
+
+### Core Loading Patterns
+**1. Basic In-Memory Processing**
+```python
+import dataiku
+
+dataset = dataiku.Dataset("large_dataset")
+processed_chunks = []
+
+for chunk in dataset.iter_dataframes_forced_types(
+    chunksize=250000,
+    infer_with_pandas=False
+):
+    # Process chunk (e.g., filter, transform)
+    filtered = chunk[chunk['value'] > 100]
+    processed_chunks.append(filtered)
+
+# Combine results (caution: 4M rows -> 16 chunks)
+final_df = pd.concat(processed_chunks)  # [3][5]
+```
+
+**2. Disk-Backed Processing (Recommended for 4M+ Rows)**
+```python
+output_dataset = dataiku.Dataset("processed_data")
+output_dataset.clear()  # Optional: Clear existing data
+
+with output_dataset.get_writer() as writer:
+    for i, chunk in enumerate(dataset.iter_dataframes(chunksize=100000)):
+        processed_chunk = transform_chunk(chunk)  # Your processing
+        writer.write_dataframe(processed_chunk)
+        
+        # Memory management
+        if i % 50 == 0:
+            gc.collect()  # Force garbage collection
+```
+
+### Advanced Patterns
+**3. Parallel Processing with Dask**
+```python
+import dask.dataframe as dd
+from dask.distributed import Client
+
+client = Client(n_workers=4)  # Local cluster
+
+ddf = dd.from_pandas(
+    dataset.iter_dataframes(chunksize=500000),
+    npartitions=16
+)
+
+result = ddf.map_partitions(
+    lambda df: df.groupby('category').sum(),
+    meta={'category': 'object', 'sum': 'float64'}
+).compute()  # [4][6]
+```
+
+**4. Database Streaming**
+```python
+with dataset.iterate_rows() as reader:
+    for row in reader:
+        # Process individual rows
+        insert_into_db(preprocess_row(row))  # [2][7]
+        
+    # Alternative: Bulk insert every 50k rows
+    bulk_buffer = []
+    for row in reader:
+        bulk_buffer.append(row)
+        if len(bulk_buffer) >= 50000:
+            execute_bulk_insert(bulk_buffer)
+            bulk_buffer = []
+```
+
+### Key Implementation Considerations
+
+1. **Memory Management**
+   - Chunk Size Formula:  
+     `chunksize = (Available RAM * 0.7) / (Row Size * 2)`
+   - Force garbage collection every N chunks
+   ```python
+   if chunk_index % 10 == 0:
+       gc.collect()
+   ```
+
+2. **Error Handling**
+   ```python
+   for chunk_number, chunk in enumerate(dataset.iter_dataframes()):
+       try:
+           process(chunk)
+       except Exception as e:
+           log_error(f"Chunk {chunk_number} failed: {str(e)}")
+           write_to_dead_letter_queue(chunk)  # [1][3]
+   ```
+
+3. **Performance Monitoring**
+   ```python
+   from memory_profiler import memory_usage
+   
+   def process_chunk(chunk):
+       # Your processing logic
+   
+   mem_usage = memory_usage(
+       (process_chunk, (chunk,)),
+       interval=0.1
+   )
+   print(f"Max memory: {max(mem_usage)} MB") 
+   ```
+
+### Recommended Pattern for 4M Rows
+```python
+# 1. Initialize
+input_ds = dataiku.Dataset("source_data")
+output_ds = dataiku.Dataset("processed_results")
+output_ds.clear()
+
+# 2. Stream-process
+with output_ds.get_writer(infer_schema=True) as writer:
+    for chunk in input_ds.iter_dataframes_forced_types(
+        chunksize=300000,
+        dtypes={'category': 'string', 'value': 'Float64'},
+        parse_dates=['timestamp_col']
+    ):
+        # Transformations
+        chunk = chunk.fillna(0)
+        chunk['calculated'] = chunk['value'] * 1.21
+        
+        # Write processed chunk
+        writer.write_dataframe(chunk)
+        
+        # Memory cleanup
+        del chunk
+        if gc.isenabled():
+            gc.collect()
+```
+
+This approach maintains constant memory usage (~500MB for 300k rows) while enabling full dataset processing. The key is avoiding in-memory concatenation of chunks unless absolutely necessary.
