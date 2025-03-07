@@ -1,3 +1,47 @@
+from sklearn.metrics import confusion_matrix, classification_report
+
+# Predict probabilities and apply the optimal threshold
+probs_test = calibrated.predict_proba(X_test)[:, 1]
+y_pred = (probs_test >= optimal_threshold).astype(int)
+
+# Print out the confusion matrix and classification report
+print(confusion_matrix(y_test, y_pred))
+print(classification_report(y_test, y_pred))
+
+
+-------------------------------------------------------------------------------
+
+from sklearn.metrics import precision_recall_curve, auc
+import matplotlib.pyplot as plt
+
+# Assuming you have a calibrated model and defined datasets: X_train, y_train, X_val, y_val
+
+# Compute predictions and Precision-Recall for the training set
+probs_train = calibrated.predict_proba(X_train)[:, 1]
+precisions_train, recalls_train, thresholds_train = precision_recall_curve(y_train, probs_train)
+prauc_train = auc(recalls_train, precisions_train)
+
+# Compute predictions and Precision-Recall for the validation set
+probs_val = calibrated.predict_proba(X_val)[:, 1]
+precisions_val, recalls_val, thresholds_val = precision_recall_curve(y_val, probs_val)
+prauc_val = auc(recalls_val, precisions_val)
+
+# Plot the curves
+plt.figure(figsize=(8, 6))
+plt.plot(recalls_train, precisions_train, label=f"Train PR curve (AUC = {prauc_train:.2f})", color='blue')
+plt.plot(recalls_val, precisions_val, label=f"Validation PR curve (AUC = {prauc_val:.2f})", color='red')
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.title('Precision-Recall Curve')
+plt.legend()
+plt.show()
+
+--------------------------------------------------------------------------------------------------------------
+
+
+
+
+
 Here's the complete and corrected implementation of the custom early stopper for LightGBM with imbalanced classes:
 
 ```python
