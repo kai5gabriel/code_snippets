@@ -21,7 +21,9 @@ val_pool = Pool(X_val, y_val)
 
 # Option 1: Automatically select threshold based on a target false positive rate
 # For example, to target a 5% false positive rate:
-optimal_threshold = final_model.select_threshold(data=val_pool, FPR=0.05)
+# Correct usage:
+optimal_threshold = select_threshold(model=final_model, data=val_pool, FPR=0.05)
+
 
 # Option 2: Manually test different thresholds to find the optimal one
 thresholds = np.arange(0.5, 0.99, 0.05)
