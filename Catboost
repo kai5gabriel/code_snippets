@@ -3,6 +3,130 @@ from catboost import CatBoostClassifier
 from sklearn.model_selection import train_test_split
 from skopt import BayesSearchCV
 from skopt.space import Real, Integer, Categorical
+from sklearn.metrics import fbeta_score, make_scorer, roc_curve, precision_recall_curve, f1_score, auc
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
+
+# [Your existing code for parameter space definition]
+
+# Keep your hyperparameter optimization as is
+# [Your existing BayesSearchCV code]
+
+# Train the final model with best parameters as you did before
+# [Your existing final_model definition and training]
+
+# After training the model, we'll add threshold optimization
+# Get the predicted probabilities for the validation set
+val_probs = final_model.predict_proba(X_val)[:, 1]
+
+# Method 1: ROC Curve analysis
+fpr, tpr, thresholds_roc = roc_curve(y_val, val_probs)
+# Calculate J statistic (Youden's index) to find optimal threshold
+J = tpr - fpr
+optimal_idx = np.argmax(J)
+optimal_threshold_roc = thresholds_roc[optimal_idx]
+
+# Method 2: Precision-Recall Curve analysis
+precision, recall, thresholds_pr = precision_recall_curve(y_val, val_probs)
+# Find threshold that maximizes F1 score
+f1_scores = 2 * (precision[:-1] * recall[:-1]) / (precision[:-1] + recall[:-1])
+optimal_idx_pr = np.argmax(f1_scores)
+optimal_threshold_pr = thresholds_pr[optimal_idx_pr]
+
+# Method 3: Use CatBoost's built-in threshold selection
+from catboost.utils import select_threshold
+# For a low false positive rate (e.g., 0.05 or 5%)
+low_fpr_threshold = select_threshold(model=final_model, data=catboost.Pool(X_val, y_val), FPR=0.05)
+
+# Compare results at different thresholds
+thresholds_to_evaluate = {
+    'Default (0.5)': 0.5,
+    'ROC Optimal': optimal_threshold_roc,
+    'PR Optimal': optimal_threshold_pr,
+    'Low FPR (5%)': low_fpr_threshold,
+    'Custom (0.7)': 0.7,  # You can adjust this value based on your risk tolerance
+    'Custom (0.8)': 0.8,  # Even more conservative
+    'Custom (0.9)': 0.9   # Very conservative
+}
+
+# Function to evaluate and display results for a threshold
+def evaluate_threshold(threshold, name):
+    # Apply threshold to get binary predictions
+    y_pred = (val_probs >= threshold).astype(int)
+    
+    # Calculate confusion matrix
+    tn, fp, fn, tp = confusion_matrix(y_val, y_pred).ravel()
+    
+    # Calculate metrics
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+    f05 = (1 + 0.5**2) * precision * recall / ((0.5**2 * precision) + recall) if ((0.5**2 * precision) + recall) > 0 else 0
+    
+    print(f"\nThreshold: {name} ({threshold:.4f})")
+    print(f"True Positives: {tp} | False Positives: {fp}")
+    print(f"False Negatives: {fn} | True Negatives: {tn}")
+    print(f"Precision: {precision:.4f} | Recall: {recall:.4f}")
+    print(f"F1 Score: {f1:.4f} | F0.5 Score: {f05:.4f}")
+    
+    return {'threshold': threshold, 'tp': tp, 'fp': fp, 'fn': fn, 'tn': tn, 
+            'precision': precision, 'recall': recall, 'f1': f1, 'f0.5': f05}
+
+# Evaluate all thresholds
+results = []
+for name, threshold in thresholds_to_evaluate.items():
+    results.append(evaluate_threshold(threshold, name))
+
+# Find the threshold with the lowest false positives while maintaining at least 25 true positives
+# (adjust the minimum true positives based on your requirements)
+min_tp = 25  # Set your minimum acceptable true positive count
+valid_results = [r for r in results if r['tp'] >= min_tp]
+if valid_results:
+    best_result = min(valid_results, key=lambda x: x['fp'])
+    print(f"\nRecommended threshold to minimize FP while maintaining at least {min_tp} TP:")
+    print(f"Threshold: {best_result['threshold']:.4f}")
+    print(f"TP: {best_result['tp']} | FP: {best_result['fp']}")
+    print(f"Precision: {best_result['precision']:.4f} | Recall: {best_result['recall']:.4f}")
+    
+    # Set this threshold in the model
+    final_model.set_probability_threshold(best_result['threshold'])
+else:
+    print(f"\nNo threshold maintains at least {min_tp} true positives")
+
+# Plot ROC Curve with different threshold points
+plt.figure(figsize=(10, 8))
+plt.plot(fpr, tpr, label=f'ROC Curve (AUC = {auc(fpr, tpr):.4f})')
+plt.plot([0, 1], [0, 1], 'k--')
+
+# Mark different thresholds on the curve
+for result in results:
+    # Find the closest point on the ROC curve
+    threshold = result['threshold']
+    idx = np.abs(thresholds_roc - threshold).argmin()
+    plt.plot(fpr[idx], tpr[idx], 'o', markersize=10)
+    plt.annotate(f"{threshold:.2f}", (fpr[idx], tpr[idx]), xytext=(10, 10), 
+                 textcoords='offset points')
+
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ROC Curve with Different Thresholds')
+plt.legend(loc='lower right')
+plt.grid(True)
+plt.savefig('roc_curve_thresholds.png')
+plt.show()
+------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+import numpy as np
+from catboost import CatBoostClassifier
+from sklearn.model_selection import train_test_split
+from skopt import BayesSearchCV
+from skopt.space import Real, Integer, Categorical
 from sklearn.metrics import fbeta_score, make_scorer
 
 # Define the search space for CatBoost
