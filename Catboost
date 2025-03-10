@@ -195,48 +195,49 @@ plt.show()
 
 
 import numpy as np
-from catboost import CatBoostClassifier
+from catboost import CatBoostClassifier, Pool
 from sklearn.model_selection import train_test_split
 from skopt import BayesSearchCV
 from skopt.space import Real, Integer, Categorical
-from sklearn.metrics import fbeta_score, make_scorer
+from sklearn.metrics import fbeta_score, make_scorer, f1_score, confusion_matrix
 
-# Define the search space for CatBoost
+# Define the F1 scorer (equal weight to precision and recall)
+f1_scorer = make_scorer(fbeta_score, beta=1)
+
+# Define the parameter search space.
+# The scale_pos_weight range is set around the expected 1:50000 imbalance.
 param_space = {
-    'scale_pos_weight': Real(30000, 100000, prior='log-uniform'),  # adjusted for 1:50000 imbalance
-    'depth': Integer(3, 10),  # equivalent to max_depth in LightGBM
+    'scale_pos_weight': Real(30000, 100000, prior='log-uniform'),
+    'depth': Integer(3, 10),
     'learning_rate': Real(0.005, 0.2, prior='log-uniform'),
-    'l2_leaf_reg': Real(1, 100, prior='log-uniform'),  # equivalent to reg_lambda
-    'random_strength': Real(0.1, 10, prior='log-uniform'),  # randomness parameter
-    'bootstrap_type': Categorical(['Bayesian', 'Bernoulli', 'MVS']),  # sampling strategy
-    'rsm': Real(0.1, 0.8),  # column sampling, similar to colsample_bytree
-    'min_data_in_leaf': Integer(1, 100),  # similar to min_child_samples
-    'subsample': Real(0.1, 0.8),  # row subsampling
+    'l2_leaf_reg': Real(1, 100, prior='log-uniform'),
+    'random_strength': Real(0.1, 10, prior='log-uniform'),
+    'bootstrap_type': Categorical(['Bayesian', 'Bernoulli', 'MVS']),
+    'rsm': Real(0.1, 0.8),
+    'min_data_in_leaf': Integer(1, 100),
+    'subsample': Real(0.1, 0.8),
 }
 
-# Use F0.5 scorer to emphasize precision over recall
-f05_scorer = make_scorer(fbeta_score, beta=0.5)
-
-# Set up the BayesSearchCV object with CatBoostClassifier
+# Set up the Bayesian hyperparameter tuner.
+# We remove auto_class_weights so that scale_pos_weight is fully tuned.
 opt = BayesSearchCV(
     estimator=CatBoostClassifier(
-        loss_function='Logloss',  # Binary classification loss
-        iterations=10000,  # Maximum number of trees (will use early stopping)
+        loss_function='Logloss',
+        iterations=10000,  # Large maximum; early stopping will prevent overtraining.
         random_seed=42,
-        thread_count=-1,  # Use all CPU cores
-        verbose=100,  # Print progress every 100 iterations
-        auto_class_weights='Balanced'  # Handle class imbalance
+        thread_count=-1,
+        verbose=100,
     ),
     search_spaces=param_space,
-    scoring=f05_scorer,  # Using F0.5 scorer
+    scoring=f1_scorer,
     cv=3,
-    n_iter=30,
+    n_iter=40,
     n_points=3,
     refit=False,
     verbose=2
 )
 
-# Perform stratified split to preserve class proportions
+# Perform a stratified split so that class proportions are maintained.
 X_train, X_val, y_train, y_val = train_test_split(
     X, y,
     test_size=0.2,
@@ -244,34 +245,63 @@ X_train, X_val, y_train, y_val = train_test_split(
     random_state=42
 )
 
-# Fit the Bayesian optimizer with early stopping
-# Note: CatBoost has early_stopping_rounds built into fit method (different from LightGBM)
+# Fit the BayesSearchCV optimizer with early stopping.
 opt.fit(
     X_train, y_train,
     eval_set=[(X_val, y_val)],
     early_stopping_rounds=20,
-    verbose=False  # Set to False as we already set verbose in the estimator
+    verbose=False
 )
 
 print("Best parameters found:", opt.best_params_)
 
-# To create final model with best parameters:
+# Create the final model using the best parameters.
 final_params = opt.best_params_.copy()
-final_params['iterations'] = 10000  # Explicitly set number of trees
+final_params['iterations'] = 10000  # Set a high maximum; early stopping will manage training length.
 
 final_model = CatBoostClassifier(
     loss_function='Logloss',
     random_seed=42,
     thread_count=-1,
     verbose=100,
-    auto_class_weights='Balanced',
     **final_params
 )
 
-# Train the final model with early stopping
+# Train the final model with early stopping on the training set.
 final_model.fit(
     X_train, y_train,
     eval_set=[(X_val, y_val)],
     early_stopping_rounds=20,
     verbose=100
 )
+
+# ---------------------
+# Threshold Optimization
+# ---------------------
+# In a fraud detection scenario, a default 0.5 classification threshold may not be optimal.
+# We evaluate multiple thresholds on the validation set based on increased F1 score.
+pred_val_probs = final_model.predict_proba(X_val)[:, 1]
+
+thresholds = np.linspace(0.1, 0.9, 17)  # Test thresholds from 0.1 to 0.9
+best_threshold = 0.5
+best_f1 = 0
+
+for thr in thresholds:
+    y_pred_thr = (pred_val_probs >= thr).astype(int)
+    score = f1_score(y_val, y_pred_thr)
+    tn, fp, fn, tp = confusion_matrix(y_val, y_pred_thr).ravel()
+    print(f"Threshold: {thr:.2f} | F1: {score:.4f} | TP: {tp}, FP: {fp}, FN: {fn}, TN: {tn}")
+    
+    if score > best_f1:
+        best_f1 = score
+        best_threshold = thr
+
+print("Optimal probability threshold based on F1 score:", best_threshold)
+
+# Set the chosen threshold in the final model for future predictions.
+final_model.set_probability_threshold(best_threshold)
+
+# Final predictions on the validation set using the optimized threshold.
+y_pred_final = final_model.predict(X_val)
+print("Confusion Matrix with optimized threshold:")
+print(confusion_matrix(y_val, y_pred_final))
