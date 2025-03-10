@@ -1,0 +1,111 @@
+import numpy as np
+from catboost import CatBoostClassifier, Pool
+from sklearn.model_selection import train_test_split
+from skopt import BayesSearchCV
+from skopt.space import Real, Integer, Categorical
+from sklearn.metrics import fbeta_score, make_scorer, confusion_matrix, precision_recall_curve
+
+# Custom metric to maximize recall while controlling precision
+def fraud_metric(y_true, y_pred_proba, threshold=0.5):
+    y_pred = (y_pred_proba >= threshold).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    return 0.7 * recall + 0.3 * precision  # Adjust weights as needed
+
+# Wrap custom metric for BayesSearchCV
+fraud_scorer = make_scorer(fraud_metric, needs_proba=True, threshold=0.5)
+
+# Hyperparameter space optimized for extreme imbalance [1][3]
+param_space = {
+    'scale_pos_weight': Real(45000, 55000, prior='uniform'),  # Exact imbalance focus [1]
+    'depth': Integer(8, 12),  # Deeper trees for complex fraud patterns
+    'learning_rate': Real(0.01, 0.1, prior='log-uniform'),
+    'l2_leaf_reg': Real(25, 100),  # Strong regularization [3]
+    'bootstrap_type': Categorical(['MVS', 'Bernoulli']),  # Valid for subsample [5]
+    'subsample': Real(0.7, 0.95),  # Requires Bernoulli/MVS bootstrap
+    'min_data_in_leaf': Integer(100, 300),  # Prevent overfitting to noise
+    'grow_policy': Categorical(['Lossguide']),  # Leaf-wise growth [4]
+    'max_leaves': Integer(64, 256),  # Requires Lossguide policy
+    'random_strength': Real(0.5, 3)  # Controlled randomness
+}
+
+# Initialize Bayesian optimizer [2][4]
+opt = BayesSearchCV(
+    estimator=CatBoostClassifier(
+        loss_function='Logloss',
+        eval_metric='F1',  # Align with early stopping
+        iterations=15000,
+        random_seed=42,
+        thread_count=-1,
+        verbose=100,
+        od_type='Iter',
+        od_wait=30
+    ),
+    search_spaces=param_space,
+    scoring=fraud_scorer,  # Custom business metric
+    cv=3,
+    n_iter=50,
+    n_points=5,
+    refit=False,
+    verbose=2
+)
+
+# Stratified split with increased validation size [3]
+X_train, X_val, y_train, y_val = train_test_split(
+    X, y,
+    test_size=0.3,
+    stratify=y,
+    random_state=42
+)
+
+# Fit with optimal imbalance handling [1][4]
+opt.fit(
+    X_train, y_train,
+    eval_set=[(X_val, y_val)],
+    early_stopping_rounds=30,
+    verbose=False
+)
+
+# Build final model with best params
+final_model = CatBoostClassifier(
+    **opt.best_params_,
+    loss_function='Logloss',
+    iterations=15000,
+    random_seed=42,
+    thread_count=-1,
+    verbose=100
+)
+
+final_model.fit(
+    X_train, y_train,
+    eval_set=[(X_val, y_val)],
+    early_stopping_rounds=30,
+    verbose=100
+)
+
+# Advanced threshold optimization [3][5]
+val_probs = final_model.predict_proba(X_val)[:, 1]
+precisions, recalls, thresholds = precision_recall_curve(y_val, val_probs)
+
+# Find threshold with recall >= 85% and max precision
+optimal_threshold = 0.5
+best_balance = 0
+
+for idx in range(len(thresholds)):
+    if recalls[idx] >= 0.85 and precisions[idx] > best_balance:
+        optimal_threshold = thresholds[idx]
+        best_balance = precisions[idx]
+
+final_model.set_probability_threshold(optimal_threshold)
+
+# Validation metrics
+y_pred = final_model.predict(X_val)
+tn, fp, fn, tp = confusion_matrix(y_val, y_pred).ravel()
+precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+
+print(f"Optimal Threshold: {optimal_threshold:.4f}")
+print(f"Validation Metrics - Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
+print(f"Confusion Matrix:\n[[{tn:5}  {fp:5}]\n [{fn:5}  {tp:5}]]")
