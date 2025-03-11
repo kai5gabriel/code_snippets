@@ -1,0 +1,87 @@
+### **Measuring the Performance of Isolation Forest (IF) on a Labeled Test Set**  
+
+Since **Isolation Forest** is an **unsupervised anomaly detection** method, it doesn’t directly optimize for fraud detection like a supervised classifier. However, since you **do have ground truth labels**, you can evaluate its performance using classification metrics.
+
+---
+
+## **1️⃣ Predicting Anomalies on the Test Set**
+After training on the **training set**, apply the model on the **test set**:
+
+```python
+from sklearn.ensemble import IsolationForest
+from sklearn.metrics import classification_report, precision_recall_curve, auc, confusion_matrix
+
+# Train the Isolation Forest on non-fraud and fraud data
+iso_forest = IsolationForest(n_estimators=100, contamination=0.000025, random_state=42)
+iso_forest.fit(X_train)
+
+# Predict on test data
+y_pred = iso_forest.predict(X_test)
+
+# Convert predictions: Isolation Forest returns -1 (anomaly) and 1 (normal)
+y_pred = [1 if x == -1 else 0 for x in y_pred]  # Convert to 1 (fraud) and 0 (non-fraud)
+```
+
+---
+
+## **2️⃣ Evaluating Performance Using Classification Metrics**
+Since you have ground truth labels (`y_test`), compare them with `y_pred`:
+
+### **✅ (A) Confusion Matrix**
+```python
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
+
+# Compute confusion matrix
+cm = confusion_matrix(y_test, y_pred)
+
+# Visualize
+plt.figure(figsize=(5,4))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["Non-Fraud", "Fraud"], yticklabels=["Non-Fraud", "Fraud"])
+plt.xlabel("Predicted")
+plt.ylabel("Actual")
+plt.title("Confusion Matrix")
+plt.show()
+```
+📌 **Key Metrics from the Confusion Matrix**:
+- **True Positives (TP)**: Fraud cases correctly detected
+- **False Positives (FP)**: Non-fraud cases incorrectly flagged
+- **False Negatives (FN)**: Fraud cases missed
+
+---
+
+### **✅ (B) Precision, Recall, and F1-score**
+```python
+print(classification_report(y_test, y_pred))
+```
+📌 **How to Interpret?**
+- **Precision (Fraud)** = How many predicted frauds were actually fraud?  
+- **Recall (Fraud)** = How many actual fraud cases did we catch?  
+- **F1-score** = Balance between precision and recall.  
+
+In fraud detection, **recall is more important** (catching all fraud is better than wrongly flagging some non-fraud cases).
+
+---
+
+### **✅ (C) Precision-Recall AUC (Recommended for Imbalanced Data)**
+Since fraud cases are rare, **ROC-AUC can be misleading**. Instead, use **Precision-Recall (PR) AUC**:
+
+```python
+from sklearn.metrics import precision_recall_curve, auc
+
+precision, recall, _ = precision_recall_curve(y_test, y_pred)
+pr_auc = auc(recall, precision)
+
+print(f"Precision-Recall AUC: {pr_auc:.4f}")
+```
+📌 **High PR AUC (~1.0)** = Better fraud detection.
+
+---
+
+### **🔹 Final Thoughts**
+- If **recall is low**, **increase contamination** in Isolation Forest.
+- If **too many false positives**, **decrease contamination** or fine-tune `n_estimators` and `max_samples`.
+- Use **Precision-Recall AUC** instead of ROC-AUC because of class imbalance.
+
+Would you like help in fine-tuning Isolation Forest for your dataset? 🚀
