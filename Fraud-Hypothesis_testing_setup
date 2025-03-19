@@ -1,0 +1,76 @@
+When performing hypothesis testing on features for a fraud detection model—especially in a binary classification task with an imbalanced (skewed) majority-to-minority ratio—you can follow a structured approach:
+
+---
+
+### 1. Define Your Hypotheses
+
+- **Null Hypothesis (H₀):** There is no significant difference in the distribution (or relationship) of the feature between the fraud (minority) and non-fraud (majority) groups.
+- **Alternative Hypothesis (H₁):** There is a significant difference in the distribution (or relationship) of the feature between the two groups.
+
+---
+
+### 2. Choose the Appropriate Test Based on Feature Type
+
+- **For Continuous Features:**
+  - **If Normally Distributed:**  
+    Use a *t-test* (specifically, an independent samples t-test) to compare the means of the two groups.
+  - **If Not Normally Distributed:**  
+    Consider a non-parametric test like the *Mann–Whitney U test* (also known as the Wilcoxon rank-sum test) which does not assume normality.
+  
+- **For Categorical Features:**
+  - Use the *Chi-square test* to check for independence between the feature and the class label.
+  - If your contingency table has low expected frequencies (often the case with imbalanced data), consider using *Fisher's exact test*.
+
+---
+
+### 3. Addressing the Imbalance in Your Dataset
+
+The highly imbalanced nature (with fraud cases being very few) introduces a few considerations:
+
+- **Statistical Power:**  
+  With a small number of fraud cases, standard tests may have low power. To mitigate this, consider:
+  - **Bootstrapping:** Resample your minority class (or both classes) to create more robust estimates of the test statistics.
+  - **Permutation Tests:** These tests don’t rely on strict distributional assumptions and can be more reliable when sample sizes are uneven.
+
+- **Data Preprocessing:**  
+  Ensure that any transformations (e.g., logarithmic transformation for skewed data) or outlier treatments are done before testing. This can improve the reliability of the test results.
+
+---
+
+### 4. Adjust for Multiple Testing
+
+If you’re testing multiple features:
+- Use corrections such as the **Bonferroni correction** or **False Discovery Rate (FDR) control** (e.g., Benjamini-Hochberg procedure) to adjust the significance levels and reduce the risk of false positives.
+
+---
+
+### 5. Evaluate Practical Significance
+
+- **Effect Sizes:**  
+  Beyond p-values, compute effect sizes (like Cohen's d for t-tests or rank-biserial correlation for Mann–Whitney U) to determine if statistically significant differences are also practically meaningful.
+
+- **Visualization:**  
+  Plotting distributions (e.g., box plots or density plots) for each feature across fraud and non-fraud groups can help confirm whether the statistical differences are apparent and relevant.
+
+---
+
+### 6. Consider Model-Based Approaches
+
+- **Logistic Regression:**  
+  Incorporate features into a logistic regression model and inspect the coefficients (with their associated p-values and confidence intervals). Regularization (like L1 or L2 penalties) can help address multicollinearity and improve model robustness.
+
+- **Tree-Based Models:**  
+  Techniques such as Random Forests or Gradient Boosted Trees can provide feature importance scores. While these are not formal hypothesis tests, they help in identifying features that most contribute to the model’s predictive power.
+
+---
+
+### Summary
+
+1. **Formulate your hypotheses** to test differences in feature distributions between fraud and non-fraud cases.
+2. **Select tests** (t-test, Mann–Whitney U, Chi-square, or Fisher's exact) based on the type and distribution of your data.
+3. **Address the imbalance** by using bootstrapping or permutation tests and ensuring proper data preprocessing.
+4. **Correct for multiple comparisons** to avoid false positives.
+5. **Assess effect sizes and visualize results** to ensure that significant differences are meaningful.
+6. **Optionally, leverage model-based approaches** like logistic regression for a more integrated analysis.
+
+By following these steps, you can rigorously test which features significantly differentiate fraud cases from non-fraud cases, even in the face of a highly imbalanced dataset.
