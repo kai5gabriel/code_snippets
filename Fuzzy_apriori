@@ -1,0 +1,118 @@
+#----------------------Normal Apriori---------------------------------------------------------
+
+import pandas as pd
+from mlxtend.frequent_patterns import apriori, association_rules
+
+# Load your dataset
+data = pd.read_csv('your_data.csv')
+
+# Assume we have columns like: 'account_number', 'device', 'cookie', 'lat', 'longitude', 
+# 'amount_transferred', 'account_open_date', 'email', 'zipcode', 'fraud'
+# For association rule mining, we need categorical data.
+
+# Example: Discretize numerical columns to convert them into categorical bins
+data['lat_bin'] = pd.cut(data['lat'], bins=5, labels=False)
+data['long_bin'] = pd.cut(data['longitude'], bins=5, labels=False)
+data['amount_bin'] = pd.qcut(data['amount_transferred'], q=5, labels=False)
+
+# For simplicity, select a few relevant features. You can add more as needed.
+cols_to_encode = ['device', 'cookie', 'zipcode', 'lat_bin', 'long_bin', 'amount_bin']
+
+# Perform one-hot encoding on the selected columns
+encoded_data = pd.get_dummies(data[cols_to_encode], prefix_sep='=')
+
+# Optionally, include the fraud label to see its association with specific itemsets.
+# Convert the fraud column into a categorical string so that we can one-hot encode it.
+data['fraud_flag'] = data['fraud'].apply(lambda x: f'fraud={x}')
+encoded_fraud = pd.get_dummies(data['fraud_flag'], prefix=None)
+
+# Combine encoded features with the fraud indicator
+df_for_apriori = pd.concat([encoded_data, encoded_fraud], axis=1)
+
+# Run the Apriori algorithm to identify frequent itemsets.
+# Adjust the min_support value according to your dataset.
+frequent_itemsets = apriori(df_for_apriori, min_support=0.01, use_colnames=True)
+
+# Generate association rules with a minimum confidence threshold.
+rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=0.5)
+
+# Filter to rules that are interesting for fraud detection, for example, rules that have 'fraud=1' in the consequent.
+fraud_rules = rules[rules['consequents'].apply(lambda x: any('fraud=1' in item for item in x))]
+
+print("Top fraud-related association rules:")
+print(fraud_rules.sort_values('lift', ascending=False).head())
+
+
+#----------------------Fuzzy Apriori---------------------------------------------------------
+
+
+
+Below is an example that uses a “fuzzy” or dynamic discretization approach to handle continuous features before performing association rule mining. In this example, we automatically bin continuous features (using quantiles as a proxy for fuzzy membership) to create categorical “fuzzy labels” (e.g., low, medium, high) for each continuous variable. We then apply the Apriori algorithm on these derived features.
+
+```python
+import pandas as pd
+import numpy as np
+from mlxtend.frequent_patterns import apriori, association_rules
+
+# Load your dataset (adjust the path as needed)
+data = pd.read_csv('your_data.csv')
+
+# Suppose you have continuous features like:
+# 'amount_transferred', 'lat', 'longitude'
+# We create fuzzy labels for these features.
+
+def assign_fuzzy_label(value, bins, labels):
+    """Assign a label based on which bin the value falls into."""
+    for i in range(len(bins) - 1):
+        if bins[i] <= value < bins[i+1]:
+            return labels[i]
+    return labels[-1]
+
+def create_fuzzy_labels(series, labels=['low', 'medium', 'high']):
+    """
+    Create fuzzy labels using quantiles.
+    This method divides the data into bins (here: low, medium, high)
+    based on the 0th, 33rd, 66th, and 100th percentiles.
+    """
+    # Compute bin edges based on quantiles.
+    bins = np.quantile(series, [0, 0.33, 0.66, 1])
+    return series.apply(lambda x: assign_fuzzy_label(x, bins, labels))
+
+# Create fuzzy label columns for continuous features.
+data['amount_label'] = create_fuzzy_labels(data['amount_transferred'])
+data['lat_label'] = create_fuzzy_labels(data['lat'])
+data['long_label'] = create_fuzzy_labels(data['longitude'])
+
+# If you have other categorical features (like device, cookie, zipcode, etc.),
+# you can include them as well. For demonstration, we use the fuzzy labels:
+transaction_features = ['amount_label', 'lat_label', 'long_label']
+
+# Create a one-hot encoded DataFrame for association rule mining.
+encoded_data = pd.get_dummies(data[transaction_features], prefix_sep='=')
+
+# Run the Apriori algorithm to identify frequent itemsets.
+# Adjust min_support as needed (here we use 0.01 as an example).
+frequent_itemsets = apriori(encoded_data, min_support=0.01, use_colnames=True)
+
+# Generate association rules with a minimum confidence threshold.
+rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=0.5)
+
+# Sort and display the top rules by lift.
+print("Top association rules:")
+print(rules.sort_values('lift', ascending=False).head())
+```
+
+### Explanation
+
+1. **Fuzzy Label Creation:**  
+   - The functions `assign_fuzzy_label` and `create_fuzzy_labels` divide each continuous feature into bins using quantiles (roughly corresponding to "low," "medium," and "high").  
+   - This dynamic binning can be seen as a simple form of fuzzy discretization, preserving relative ordering without relying on fixed thresholds.
+
+2. **One-Hot Encoding:**  
+   - The newly created fuzzy label columns are one-hot encoded. This converts each label into a binary indicator (e.g., `amount_label=low`, `amount_label=medium`, etc.) that can be used by the Apriori algorithm.
+
+3. **Apriori and Rule Mining:**  
+   - The `apriori` function is applied on the one-hot encoded DataFrame to extract frequent itemsets.  
+   - The `association_rules` function then extracts association rules, and these rules are sorted by lift so you can focus on the most interesting associations.
+
+This code gives you a starting point for mining rules from continuous data without manually setting fixed bins. You can further refine the fuzzy discretization (for example, using domain-specific thresholds or more advanced fuzzy logic techniques) and include additional features as needed.
