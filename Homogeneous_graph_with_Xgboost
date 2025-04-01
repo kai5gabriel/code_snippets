@@ -1,0 +1,96 @@
+Sure! Below is an implementation of **Node2Vec on a homogeneous graph**, but we encode **node type information as features** to retain some heterogeneity.  
+
+### **📌 Steps:**  
+1️⃣ **Convert your heterogeneous fraud dataset into a homogeneous graph** (all nodes connected, but labeled with types).  
+2️⃣ **Encode node types as features** (e.g., one-hot encoding for "account," "device," "email").  
+3️⃣ **Train Node2Vec to learn node embeddings** that retain fraud-related structures.  
+4️⃣ **Use embeddings as input to a fraud detection model** (e.g., RandomForest or XGBoost).  
+
+---
+
+## **🚀 Code Implementation**
+```python
+import networkx as nx
+import numpy as np
+import pandas as pd
+from node2vec import Node2Vec
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+
+# Step 1: Create a Homogeneous Graph from a Heterogeneous Dataset
+G = nx.Graph()
+
+# Sample Fraud Data (Nodes with Type Info)
+nodes = [
+    ('acct_1', 'account'), ('acct_2', 'account'), ('acct_3', 'account'),
+    ('dev_1', 'device'), ('dev_2', 'device'),
+    ('email_1', 'email'), ('email_2', 'email'),
+    ('ip_1', 'ip'), ('ip_2', 'ip')
+]
+
+edges = [
+    ('acct_1', 'dev_1'), ('acct_2', 'dev_1'),  # Accounts using the same device
+    ('acct_1', 'email_1'), ('acct_2', 'email_1'),  # Shared email
+    ('acct_3', 'email_2'),
+    ('acct_1', 'ip_1'), ('acct_2', 'ip_1'),  # Shared IP
+    ('acct_3', 'ip_2'),
+]
+
+# Add nodes with type info
+for node, node_type in nodes:
+    G.add_node(node, node_type=node_type)
+
+# Add edges
+G.add_edges_from(edges)
+
+# Step 2: Encode Node Types as Features
+node_types = [G.nodes[node]['node_type'] for node in G.nodes()]
+encoder = OneHotEncoder(sparse_output=False)
+node_features = encoder.fit_transform(np.array(node_types).reshape(-1, 1))
+
+# Map features to node names
+node_feature_dict = {node: feat for node, feat in zip(G.nodes(), node_features)}
+
+# Step 3: Train Node2Vec with Node Features
+node2vec = Node2Vec(G, dimensions=64, walk_length=10, num_walks=100, workers=4)
+model = node2vec.fit(window=5, min_count=1, sg=1)
+
+# Get node embeddings
+embeddings = {node: model.wv[node] for node in G.nodes()}
+
+# Step 4: Prepare Data for Fraud Classification
+# Assume some accounts are fraudulent
+fraud_labels = {'acct_1': 1, 'acct_2': 1, 'acct_3': 0, 'dev_1': 0, 'dev_2': 0, 'email_1': 1, 'email_2': 0, 'ip_1': 1, 'ip_2': 0}
+
+# Prepare features for fraud accounts only
+X = np.array([np.concatenate([embeddings[node], node_feature_dict[node]]) for node in fraud_labels.keys()])
+y = np.array([fraud_labels[node] for node in fraud_labels.keys()])
+
+# Step 5: Train Fraud Detection Model using Node Embeddings
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+clf = RandomForestClassifier(n_estimators=100, random_state=42)
+clf.fit(X_train, y_train)
+
+# Evaluate
+y_pred = clf.predict(X_test)
+print(classification_report(y_test, y_pred))
+```
+
+---
+
+## **🔍 Explanation**
+✔ **Graph Structure**: All nodes are in a single **homogeneous graph**, but we encode their original types as features.  
+✔ **Node2Vec Walks**: The **graph structure is preserved**, learning fraud relationships between accounts, devices, and IPs.  
+✔ **One-Hot Encoding for Node Types**: Helps **retain heterogeneity** by distinguishing different node types.  
+✔ **Train Fraud Model**: **Embeddings + node type features** are used to predict fraud.  
+
+---
+
+## **🎯 Key Takeaways**
+✅ **Better than pure Node2Vec**, since **node types are preserved**.  
+✅ **Still a homogeneous graph**, so **relationships between node types are not explicitly learned** (unlike RGCN).  
+✅ **Good baseline if you can't use a full heterogeneous GNN**.  
+
+Do you want to extend this with **weighted edges or additional fraud signals?** 🚀
