@@ -1,0 +1,83 @@
+If your **XGBoost model is trained at the transaction level**, then **FastRP embeddings should also be generated for transaction nodes**, not just account nodes.  
+
+---
+
+## **🔹 Should FastRP Embeddings Be for Transactions?**
+✅ Yes, if your **fraud detection is at the transaction level**, you need **embeddings for transactions**.  
+✅ Each transaction node will have its own embedding, which will be used as features for XGBoost.  
+✅ If you generate embeddings at the **account level**, you might lose transaction-specific fraud patterns.  
+
+---
+
+## **🚀 How to Generate Transaction-Level Embeddings with FastRP**
+Instead of projecting all nodes (`'*'`), filter for **only transactions**:
+```cypher
+CALL gds.fastRP.write({
+  nodeProjection: 'Transaction',  // Only transactions
+  relationshipProjection: {
+    MADE_BY: { type: 'MADE_BY', orientation: 'UNDIRECTED' },
+    LINKED_TO: { type: 'LINKED_TO', orientation: 'UNDIRECTED' }
+  },
+  embeddingDimension: 64,
+  iterationWeights: [0.1, 0.1, 1.0, 1.0],  
+  writeProperty: 'fastrp_embedding'
+});
+```
+🔹 This ensures that each **transaction node** gets an embedding based on its graph structure.
+
+---
+
+## **🚀 Export Transaction-Level Embeddings**
+Now, export only transaction embeddings:
+```cypher
+CALL apoc.export.csv.query(
+  "MATCH (t:Transaction) RETURN t.id AS transaction_id, t.fastrp_embedding AS embedding",
+  "transaction_embeddings.csv", {}
+);
+```
+This ensures you are **exporting embeddings at the transaction level**.
+
+---
+
+## **🚀 Train XGBoost Using Transaction Embeddings**
+After exporting, train your model in Python:
+```python
+import pandas as pd
+import numpy as np
+import xgboost as xgb
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+
+# Load embeddings
+df = pd.read_csv("transaction_embeddings.csv")
+
+# Convert embedding column from string to array
+df['embedding'] = df['embedding'].apply(lambda x: np.array(eval(x)))
+
+# Extract node features
+X = np.vstack(df['embedding'].values)
+
+# Load fraud labels for transactions
+fraud_labels = {'txn_1': 1, 'txn_2': 0, 'txn_3': 1}  # Replace with real fraud labels
+df['fraud'] = df['transaction_id'].map(fraud_labels).fillna(0)
+
+# Train XGBoost on embeddings
+X_train, X_test, y_train, y_test = train_test_split(X, df['fraud'], test_size=0.3, random_state=42)
+
+clf = xgb.XGBClassifier(n_estimators=100, learning_rate=0.1, max_depth=6)
+clf.fit(X_train, y_train)
+
+# Evaluate
+y_pred = clf.predict(X_test)
+print(classification_report(y_test, y_pred))
+```
+
+---
+
+## **🎯 Key Takeaways**
+✔ **Generate FastRP embeddings at the transaction level**, not account level.  
+✔ **Use only transaction nodes** in Neo4j for embedding computation.  
+✔ **Export embeddings per transaction** and merge them with fraud labels.  
+✔ **Train XGBoost on transaction embeddings** to detect fraud.  
+
+🔹 Want to compare **FastRP vs. Node2Vec for transaction fraud detection**? Let me know! 🚀
