@@ -10,24 +10,38 @@ data = pd.read_csv('your_data.csv')
 # 'amount_transferred', 'account_open_date', 'email', 'zipcode', 'fraud'
 # For association rule mining, we need categorical data.
 
-# Example: Discretize numerical columns to convert them into categorical bins
-data['lat_bin'] = pd.cut(data['lat'], bins=5, labels=False)
-data['long_bin'] = pd.cut(data['longitude'], bins=5, labels=False)
-data['amount_bin'] = pd.qcut(data['amount_transferred'], q=5, labels=False)
+import pandas as pd
 
-# For simplicity, select a few relevant features. You can add more as needed.
+# Sample Data
+data = pd.DataFrame({
+    'lat': [37.77, 40.71, 34.05, 36.16, 41.88],  # Latitude values
+    'longitude': [-122.42, -74.01, -118.24, -115.15, -87.63],  # Longitude values
+    'amount_transferred': [50, 200, 500, 1500, 3000],  # Transaction amounts
+    'device': ['mobile', 'desktop', 'tablet', 'mobile', 'desktop'],
+    'cookie': ['abc123', 'xyz456', 'pqr789', 'abc123', 'xyz456'],
+    'zipcode': ['94103', '10001', '90012', '89109', '60601'],
+    'fraud': [0, 1, 0, 1, 0]
+})
+
+# ✅ Convert numerical columns into categorical bins (Convert labels to STRING instead of integers)
+data['lat_bin'] = pd.cut(data['lat'], bins=5, labels=[f'lat_{i}' for i in range(5)]).astype(str)
+data['long_bin'] = pd.cut(data['longitude'], bins=5, labels=[f'long_{i}' for i in range(5)]).astype(str)
+data['amount_bin'] = pd.qcut(data['amount_transferred'], q=5, labels=[f'amt_{i}' for i in range(5)]).astype(str)
+
+# ✅ Select categorical columns for encoding
 cols_to_encode = ['device', 'cookie', 'zipcode', 'lat_bin', 'long_bin', 'amount_bin']
 
-# Perform one-hot encoding on the selected columns
+# ✅ One-hot encode categorical features
 encoded_data = pd.get_dummies(data[cols_to_encode], prefix_sep='=')
 
-# Optionally, include the fraud label to see its association with specific itemsets.
-# Convert the fraud column into a categorical string so that we can one-hot encode it.
+# ✅ Convert fraud column to categorical string and encode
 data['fraud_flag'] = data['fraud'].apply(lambda x: f'fraud={x}')
 encoded_fraud = pd.get_dummies(data['fraud_flag'], prefix=None)
 
-# Combine encoded features with the fraud indicator
+# ✅ Merge encoded features with fraud label
 df_for_apriori = pd.concat([encoded_data, encoded_fraud], axis=1)
+
+print(df_for_apriori.head())
 
 # Run the Apriori algorithm to identify frequent itemsets.
 # Adjust the min_support value according to your dataset.
