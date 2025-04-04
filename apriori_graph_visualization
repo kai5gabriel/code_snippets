@@ -10,6 +10,9 @@ print(fraud_rules[['antecedents', 'consequents', 'support', 'confidence', 'lift'
 
 fraud_rules = fraud_rules.sort_values(by=["lift", "confidence"], ascending=[False, False])
 
+fraud_rules = fraud_rules.sort_values(by=["lift", "confidence"], ascending=[False, False]) \
+                         .drop_duplicates(subset=["antecedents"], keep="first")
+
 
 
 import networkx as nx
