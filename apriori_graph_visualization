@@ -27,6 +27,8 @@ fraud_rules = fraud_rules.sort_values(by=["lift", "confidence"], ascending=[Fals
 #--Display
 fraud_rules["antecedents"] = fraud_rules["antecedents"].apply(lambda x: ", ".join(map(str, x)))
 
+print("\n".join(fraud_rules["antecedents"].astype(str).tolist()))
+
 
 import networkx as nx
 import matplotlib.pyplot as plt
