@@ -10,6 +10,17 @@ print(fraud_rules[['antecedents', 'consequents', 'support', 'confidence', 'lift'
 
 fraud_rules = fraud_rules.sort_values(by=["lift", "confidence"], ascending=[False, False])
 
+#---1. Convert Antecedents to a Sorted Tuple
+#---This ensures that {A, B} and {B, A} are treated the same.
+fraud_rules["antecedents"] = fraud_rules["antecedents"].apply(lambda x: tuple(sorted(x)))
+fraud_rules["consequents"] = fraud_rules["consequents"].apply(lambda x: tuple(sorted(x)))
+
+
+#--Drop exact duplicates
+fraud_rules = fraud_rules.drop_duplicates(subset=["antecedents", "consequents"])
+
+
+
 fraud_rules = fraud_rules.sort_values(by=["lift", "confidence"], ascending=[False, False]) \
                          .drop_duplicates(subset=["antecedents"], keep="first")
 
