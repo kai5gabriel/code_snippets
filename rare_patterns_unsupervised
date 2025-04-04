@@ -1,0 +1,89 @@
+### **🚀 Detecting Rare Yet Strong Patterns in an Unsupervised Manner**  
+To capture **infrequent itemsets that still form strong patterns**, we need to:  
+1. **Find rules with high lift** (strong correlation between features).  
+2. **Find itemsets with low support** (rare occurrences).  
+3. **Ensure the rule is still valid with high confidence** (consistency).  
+
+---
+
+## **🔍 Step-by-Step Code to Capture Rare Yet Strong Patterns**  
+
+### **1️⃣ Run Apriori on All Transactions (Unsupervised)**
+We start by applying Apriori **without filtering for fraud**.  
+
+```python
+from mlxtend.frequent_patterns import apriori, association_rules
+
+# Run Apriori on the entire dataset
+frequent_itemsets = apriori(transactions_df, min_support=0.001, use_colnames=True)
+```
+💡 This finds **all frequent feature combinations**, not just fraud-related ones.
+
+---
+
+### **2️⃣ Generate Association Rules & Filter for Strong Patterns**
+Now, we generate **all association rules** and focus on **high-lift, low-support rules**.  
+
+```python
+# Generate association rules
+rules = association_rules(frequent_itemsets, metric="lift", min_threshold=1)
+
+# Define thresholds for rare yet strong patterns
+min_lift = 3  # Strong association
+max_support = 0.02  # Rare (e.g., appears in less than 2% of transactions)
+min_confidence = 0.7  # High certainty
+
+# Filter for rare, high-lift, and high-confidence rules
+suspicious_rules = rules[
+    (rules["lift"] >= min_lift) &
+    (rules["support"] <= max_support) & 
+    (rules["confidence"] >= min_confidence)
+]
+```
+
+✅ **Why does this work?**  
+- **Low support** → The pattern is rare.  
+- **High lift** → It’s strongly linked to a specific outcome.  
+- **High confidence** → When the antecedent appears, the consequent almost always follows.  
+
+---
+
+### **3️⃣ Check If These Rules Appear More in Fraud Transactions**
+Since we didn’t use fraud labels initially, now we check if fraud transactions contain these rare patterns.  
+
+```python
+# Add fraud occurrence ratio for each rule
+suspicious_rules["fraud_presence"] = suspicious_rules["antecedents"].apply(
+    lambda x: transactions_df[(transactions_df[list(x)] == 1).all(axis=1)]["fraud_label"].mean()
+)
+```
+💡 **If `fraud_presence` is high**, this rule might **indicate a hidden fraud pattern**.
+
+---
+
+### **📊 Optional: Visualizing the Rare & Strong Rules**
+To see which patterns stand out, you can visualize **lift vs. support**.
+
+```python
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(10,6))
+plt.scatter(suspicious_rules["support"], suspicious_rules["lift"], c=suspicious_rules["confidence"], cmap='coolwarm', edgecolors='k')
+plt.colorbar(label="Confidence")
+plt.xlabel("Support")
+plt.ylabel("Lift")
+plt.title("Rare Yet Strong Rules")
+plt.show()
+```
+🔹 **Interpretation:**  
+- **High lift, low support** (top-left) → Rare but very strong indicators.  
+- **High confidence (redder color)** → These patterns happen consistently.  
+
+---
+
+## **🚀 Next Steps**
+1. **Run this code on your dataset.**  
+2. **Check which rules have a high `fraud_presence`.**  
+3. **Use these patterns as fraud signals in future analysis.**  
+
+Would you like help refining the feature set before running Apriori? 😊
