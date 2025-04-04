@@ -24,6 +24,8 @@ fraud_rules = fraud_rules.drop_duplicates(subset=["antecedents", "consequents"])
 fraud_rules = fraud_rules.sort_values(by=["lift", "confidence"], ascending=[False, False]) \
                          .drop_duplicates(subset=["antecedents"], keep="first")
 
+#--Display
+fraud_rules["antecedents"] = fraud_rules["antecedents"].apply(lambda x: ", ".join(map(str, x)))
 
 
 import networkx as nx
