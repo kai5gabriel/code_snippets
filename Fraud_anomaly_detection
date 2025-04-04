@@ -1,0 +1,174 @@
+Yes! You can implement an **autoencoder for anomaly detection using Scikit-Learn** by leveraging `MLPRegressor` from `sklearn.neural_network`. While it lacks PyTorch’s flexibility, it's much simpler and works well for detecting fraud anomalies.  
+
+---
+
+### **🚀 Scikit-Learn Autoencoder for Fraud Detection**
+```python
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+from sklearn.neural_network import MLPRegressor
+from sklearn.metrics import mean_squared_error
+
+# Sample dataset (Replace with real transaction data)
+np.random.seed(42)
+data = np.random.rand(5000, 10)  # 5000 transactions, 10 features
+
+# Scale data for stability
+scaler = MinMaxScaler()
+data = scaler.fit_transform(data)
+
+# Split into train (normal) and test (contains anomalies)
+X_train, X_test = train_test_split(data, test_size=0.2, random_state=42)
+
+# Define Autoencoder using MLPRegressor
+autoencoder = MLPRegressor(hidden_layer_sizes=(64, 32, 16, 32, 64), 
+                           activation='relu', solver='adam', max_iter=200,
+                           random_state=42)
+
+# Train on normal data
+autoencoder.fit(X_train, X_train)
+
+# Reconstruct test data
+reconstructions = autoencoder.predict(X_test)
+
+# Compute reconstruction error
+errors = np.mean((X_test - reconstructions) ** 2, axis=1)
+
+# Set anomaly threshold (top 5% highest errors)
+threshold = np.percentile(errors, 95)
+anomalies = errors > threshold
+
+print(f"Detected {anomalies.sum()} potential fraud transactions out of {len(X_test)}")
+
+# Convert back to DataFrame for analysis
+test_df = pd.DataFrame(X_test, columns=[f"feature_{i}" for i in range(data.shape[1])])
+test_df["anomaly_score"] = errors
+test_df["fraud_suspect"] = anomalies
+
+# Show top suspicious transactions
+print(test_df.sort_values(by="anomaly_score", ascending=False).head(10))
+```
+
+---
+
+### **📌 How This Detects Emerging Fraud**
+✅ **No fraud labels needed** → Learns normal transaction behavior.  
+✅ **Identifies unseen fraud types** → Transactions with **high reconstruction error** are flagged.  
+✅ **Simpler than PyTorch** → Uses Scikit-Learn’s `MLPRegressor`.  
+
+🔹 **Would you like to test it on your dataset?** 🚀
+
+
+
+
+Here’s an **Autoencoder implementation using PyTorch** for **fraud anomaly detection**. This model learns the normal transaction patterns and flags transactions that cannot be reconstructed well.  
+
+---
+
+### **📌 Steps in the Autoencoder Pipeline:**
+1. **Train autoencoder** on **normal transactions** (non-fraud data).  
+2. **Encode & decode transactions** → Learn hidden patterns in data.  
+3. **Measure reconstruction error** → High error means an anomaly (potential fraud).  
+4. **Set a threshold** → Transactions with high error are flagged as suspicious.
+
+---
+
+### **🚀 PyTorch Autoencoder for Fraud Detection**
+```python
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+
+# Sample dataset (Replace with real transaction data)
+np.random.seed(42)
+data = np.random.rand(5000, 10)  # 5000 transactions, 10 features
+
+# Scale data to [0,1] for stability
+scaler = MinMaxScaler()
+data = scaler.fit_transform(data)
+
+# Split into train (normal) and test (contains anomalies)
+X_train, X_test = train_test_split(data, test_size=0.2, random_state=42)
+
+# Convert to PyTorch tensors
+X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
+
+# Define the Autoencoder model
+class FraudAutoencoder(nn.Module):
+    def __init__(self, input_dim):
+        super(FraudAutoencoder, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 16),
+            nn.ReLU()
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(16, 32),
+            nn.ReLU(),
+            nn.Linear(32, 64),
+            nn.ReLU(),
+            nn.Linear(64, input_dim)
+        )
+
+    def forward(self, x):
+        encoded = self.encoder(x)
+        decoded = self.decoder(encoded)
+        return decoded
+
+# Model setup
+input_dim = X_train.shape[1]
+model = FraudAutoencoder(input_dim)
+criterion = nn.MSELoss()  # Reconstruction error
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Training the Autoencoder
+num_epochs = 50
+batch_size = 128
+
+for epoch in range(num_epochs):
+    optimizer.zero_grad()
+    outputs = model(X_train_tensor)
+    loss = criterion(outputs, X_train_tensor)
+    loss.backward()
+    optimizer.step()
+    if (epoch+1) % 10 == 0:
+        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.6f}")
+
+# Detect Anomalies (Fraud)
+with torch.no_grad():
+    reconstructions = model(X_test_tensor)
+    errors = torch.mean((X_test_tensor - reconstructions) ** 2, dim=1).numpy()
+
+# Set an anomaly threshold
+threshold = np.percentile(errors, 95)  # Top 5% are anomalies
+anomalies = errors > threshold
+
+print(f"Detected {anomalies.sum()} potential fraud transactions out of {len(X_test)}")
+
+# Convert back to DataFrame for analysis
+test_df = pd.DataFrame(X_test, columns=[f"feature_{i}" for i in range(input_dim)])
+test_df["anomaly_score"] = errors
+test_df["fraud_suspect"] = anomalies
+
+# Show top suspicious transactions
+print(test_df.sort_values(by="anomaly_score", ascending=False).head(10))
+```
+
+---
+
+### **📌 How This Detects Emerging Fraud:**
+✅ **No fraud labels needed** → It learns normal behavior, then flags deviations.  
+✅ **Identifies unseen fraud types** → If a transaction is **too different**, it’s suspicious.  
+✅ **Dynamic threshold** → Adjusts based on real transaction patterns.  
+
+📢 **Do you need help tuning the threshold or optimizing performance?** 😊
