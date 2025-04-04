@@ -1,0 +1,17 @@
+import networkx as nx
+import matplotlib.pyplot as plt
+
+# Create graph for visualization
+G = nx.DiGraph()
+
+for _, row in fraud_rules.iterrows():
+    for antecedent in row['antecedents']:
+        for consequent in row['consequents']:
+            G.add_edge(antecedent, consequent, weight=row['lift'])
+
+# Draw graph
+plt.figure(figsize=(8, 6))
+pos = nx.spring_layout(G)
+nx.draw(G, pos, with_labels=True, node_color='lightblue', edge_color='gray', node_size=3000, font_size=10)
+plt.title("Fraud Association Rules")
+plt.show()
