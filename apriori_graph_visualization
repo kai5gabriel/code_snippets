@@ -1,3 +1,17 @@
+fraud_rules = rules[
+    (rules['consequents'].apply(lambda x: len(x) == 1 and 'fraud' in x)) &  # Only "fraud" in consequents
+    (rules['antecedents'].apply(lambda x: len(x) <= 2)) &  # Limit to 1 or 2 antecedents
+    (rules['confidence'] > 0.8) &  # High confidence
+    (rules['lift'] > 3)  # Strong association
+].sort_values(by=["lift", "confidence"], ascending=[False, False])
+
+print(fraud_rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']])
+
+
+fraud_rules = fraud_rules.sort_values(by=["lift", "confidence"], ascending=[False, False])
+
+
+
 import networkx as nx
 import matplotlib.pyplot as plt
 
