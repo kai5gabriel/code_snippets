@@ -1,6 +1,8 @@
+import pandas as pd
+
 def zero_aware_qcut(df, col, q=3, new_col_suffix='_bin'):
     """
-    Applies qcut binning to non-zero values and assigns 'none' to zero values.
+    Applies qcut binning to non-zero values and assigns 0 to zero values.
     Handles duplicate bin edges and dynamically adjusts bin labels.
     """
     new_col = col + new_col_suffix
@@ -13,9 +15,9 @@ def zero_aware_qcut(df, col, q=3, new_col_suffix='_bin'):
 
         # Adjust labels dynamically based on bin count
         num_bins = len(bin_edges) - 1
-        labels = [f'bin_{i}' for i in range(num_bins)]
+        labels = [i for i in range(1, num_bins + 1)]  # Numeric labels for bins
 
-        # Apply qcut with dynamic labels
+        # Apply qcut to non-zero values
         df.loc[nonzero_mask, new_col] = pd.qcut(
             nonzero_values,
             q=num_bins,
@@ -26,9 +28,10 @@ def zero_aware_qcut(df, col, q=3, new_col_suffix='_bin'):
         print(f"Skipping column '{col}' due to qcut error: {e}")
         df[new_col] = 'error'
 
-    # Label 0s as 'none'
-    df.loc[~nonzero_mask, new_col] = 'none'
+    # For zero values, assign a separate bin (e.g., 0 for 'none')
+    df.loc[~nonzero_mask, new_col] = 0  # You can set this to a specific number or a flag like 0
     return df
+
 
 
 
