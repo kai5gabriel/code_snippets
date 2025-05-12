@@ -1,23 +1,35 @@
-def zero_aware_qcut(df, col, q=3, labels=None, new_col_suffix='_bin'):
+def zero_aware_qcut(df, col, q=3, new_col_suffix='_bin'):
     """
-    Applies qcut binning to non-zero values, and keeps zero values in a separate bin.
+    Applies qcut binning to non-zero values and assigns 'none' to zero values.
+    Handles duplicate bin edges and dynamically adjusts bin labels.
     """
-    if labels is None:
-        labels = [f'bin_{i}' for i in range(q)]
-    
     new_col = col + new_col_suffix
     nonzero_mask = df[col] != 0
+    nonzero_values = df.loc[nonzero_mask, col]
 
-    # Apply qcut to non-zero values
-    df.loc[nonzero_mask, new_col] = pd.qcut(
-        df.loc[nonzero_mask, col],
-        q=q,
-        labels=labels
-    )
+    try:
+        # Get bin edges with duplicates dropped
+        _, bin_edges = pd.qcut(nonzero_values, q=q, retbins=True, duplicates='drop')
 
-    # Label 0s separately
+        # Adjust labels dynamically based on bin count
+        num_bins = len(bin_edges) - 1
+        labels = [f'bin_{i}' for i in range(num_bins)]
+
+        # Apply qcut with dynamic labels
+        df.loc[nonzero_mask, new_col] = pd.qcut(
+            nonzero_values,
+            q=num_bins,
+            labels=labels,
+            duplicates='drop'
+        )
+    except ValueError as e:
+        print(f"Skipping column '{col}' due to qcut error: {e}")
+        df[new_col] = 'error'
+
+    # Label 0s as 'none'
     df.loc[~nonzero_mask, new_col] = 'none'
     return df
+
 
 
 cols_to_bin = ['connected_party_count', 'shared_address_count', 'shared_device_count']
