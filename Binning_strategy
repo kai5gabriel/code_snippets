@@ -1,0 +1,15 @@
+import pandas as pd
+import numpy as np
+
+# Sample: df['connected_party_count']
+nonzero_mask = df['connected_party_count'] != 0
+
+# Apply qcut only on non-zero values
+df.loc[nonzero_mask, 'connection_bin'] = pd.qcut(
+    df.loc[nonzero_mask, 'connected_party_count'],
+    q=3,  # or 4, etc. based on how many bins you want
+    labels=['low', 'medium', 'high']  # or however many bins you chose
+)
+
+# Set 'none' for 0-connected values
+df.loc[~nonzero_mask, 'connection_bin'] = 'none'
