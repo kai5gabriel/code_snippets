@@ -1,15 +1,26 @@
-import pandas as pd
-import numpy as np
+def zero_aware_qcut(df, col, q=3, labels=None, new_col_suffix='_bin'):
+    """
+    Applies qcut binning to non-zero values, and keeps zero values in a separate bin.
+    """
+    if labels is None:
+        labels = [f'bin_{i}' for i in range(q)]
+    
+    new_col = col + new_col_suffix
+    nonzero_mask = df[col] != 0
 
-# Sample: df['connected_party_count']
-nonzero_mask = df['connected_party_count'] != 0
+    # Apply qcut to non-zero values
+    df.loc[nonzero_mask, new_col] = pd.qcut(
+        df.loc[nonzero_mask, col],
+        q=q,
+        labels=labels
+    )
 
-# Apply qcut only on non-zero values
-df.loc[nonzero_mask, 'connection_bin'] = pd.qcut(
-    df.loc[nonzero_mask, 'connected_party_count'],
-    q=3,  # or 4, etc. based on how many bins you want
-    labels=['low', 'medium', 'high']  # or however many bins you chose
-)
+    # Label 0s separately
+    df.loc[~nonzero_mask, new_col] = 'none'
+    return df
 
-# Set 'none' for 0-connected values
-df.loc[~nonzero_mask, 'connection_bin'] = 'none'
+
+cols_to_bin = ['connected_party_count', 'shared_address_count', 'shared_device_count']
+
+for col in cols_to_bin:
+    df = zero_aware_qcut(df, col, q=3, labels=['low', 'medium', 'high'])
