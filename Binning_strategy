@@ -1,41 +1,39 @@
 import pandas as pd
+import numpy as np
 
-def zero_aware_qcut(df, col, q=3, new_col_suffix='_bin'):
+def bin_columns_with_zero_flag(df, columns, bins, labels, zero_label='red flag', new_suffix='_binned'):
     """
-    Applies qcut binning to non-zero values and assigns 0 to zero values.
-    Handles duplicate bin edges and dynamically adjusts bin labels.
+    Bin specified columns in a DataFrame, treating zeros as a special case.
+
+    Parameters:
+    - df: pandas DataFrame
+    - columns: list of column names to process
+    - bins: list of bin edges (excluding 0, which is handled separately)
+    - labels: list of labels corresponding to bins (excluding zero_label)
+    - zero_label: label for zero values (default: 'red flag')
+    - new_suffix: suffix for new binned columns
+
+    Returns:
+    - DataFrame with new binned columns
     """
-    new_col = col + new_col_suffix
-    nonzero_mask = df[col] != 0
-    nonzero_values = df.loc[nonzero_mask, col]
-
-    try:
-        # Get bin edges with duplicates dropped
-        _, bin_edges = pd.qcut(nonzero_values, q=q, retbins=True, duplicates='drop')
-
-        # Adjust labels dynamically based on bin count
-        num_bins = len(bin_edges) - 1
-        labels = [i for i in range(1, num_bins + 1)]  # Numeric labels for bins
-
-        # Apply qcut to non-zero values
-        df.loc[nonzero_mask, new_col] = pd.qcut(
-            nonzero_values,
-            q=num_bins,
-            labels=labels,
-            duplicates='drop'
-        )
-    except ValueError as e:
-        print(f"Skipping column '{col}' due to qcut error: {e}")
-        df[new_col] = 'error'
-
-    # For zero values, assign a separate bin (e.g., 0 for 'none')
-    df.loc[~nonzero_mask, new_col] = 0  # You can set this to a specific number or a flag like 0
+    df = df.copy()
+    for col in columns:
+        # Create a mask for zeros
+        zero_mask = df[col] == 0
+        # Bin non-zero values, drop duplicate bin edges if any
+        binned = pd.cut(df.loc[~zero_mask, col], bins=bins, labels=labels, duplicates='drop', include_lowest=True)
+        # Create a new column with default NaN
+        new_col = pd.Series(np.nan, index=df.index)
+        # Assign binned values
+        new_col.loc[~zero_mask] = binned
+        # Assign the zero label
+        new_col.loc[zero_mask] = zero_label
+        # Assign to DataFrame
+        df[col + new_suffix] = new_col
     return df
 
 
 
-
-cols_to_bin = ['connected_party_count', 'shared_address_count', 'shared_device_count']
-
-for col in cols_to_bin:
-    df = zero_aware_qcut(df, col, q=3, labels=['low', 'medium', 'high'])
+bins = [0, 5, 15, float('inf')]
+labels = ['low', 'medium', 'high']
+result = bin_columns_with_zero_flag(df, ['connections', 'messages'], bins, labels)
