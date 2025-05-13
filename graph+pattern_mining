@@ -1,3 +1,104 @@
+No problem — even without the browser, I can summarize **commonly used features for fraud detection from pattern mining and graph-based papers**. These features are extracted based on well-known publications like:
+
+* **FraudMiner (Sahin et al., 2013)**
+* **PayPal + Neo4j**
+* **Phua et al., 2010 (Fraud Detection Survey)**
+
+---
+
+## 🔍 **Features Used in Pattern Mining and Graph-Based Fraud Detection**
+
+### 🔹 1. **Transaction-Level Features**
+
+| Feature                     | Description                                     |
+| --------------------------- | ----------------------------------------------- |
+| `transaction_amount`        | Absolute amount of each transaction             |
+| `merchant_category_code`    | Type of merchant (e.g., electronics, groceries) |
+| `transaction_type`          | Online, ATM, POS, mobile app                    |
+| `time_of_day`               | Morning, afternoon, night                       |
+| `transaction_frequency`     | Number of transactions in past X minutes/hours  |
+| `location_change_frequency` | How often location changes between transactions |
+| `device_change_frequency`   | Number of devices used recently                 |
+
+---
+
+### 🔹 2. **Account-Level / User Behavior Features**
+
+| Feature                  | Description                                                      |
+| ------------------------ | ---------------------------------------------------------------- |
+| `num_accounts_per_party` | How many accounts a party owns (often low for normal users)      |
+| `avg_amount_per_day`     | Mean spend per day                                               |
+| `daily_txn_stddev`       | Variability in daily transaction amount                          |
+| `num_failed_logins`      | Could indicate brute force or suspicious access                  |
+| `account_age`            | How old is the account                                           |
+| `num_devices_used`       | Unique devices tied to an account                                |
+| `party_has_loops`        | Is the account part of a cyclic transaction pattern (suspicious) |
+
+---
+
+### 🔹 3. **Relational / Graph Features (Neo4j)**
+
+> These are **very useful for detecting fraud rings or collusion**.
+
+| Graph-Based Feature                         | Description                                             |
+| ------------------------------------------- | ------------------------------------------------------- |
+| `shared_phone_or_email_count`               | How many other parties share this contact info          |
+| `common_account_count`                      | Number of accounts shared between two parties           |
+| `connected_component_size`                  | Size of the graph component the party belongs to        |
+| `triangle_count`                            | Number of closed loops a party participates in          |
+| `clustering_coefficient`                    | Measures tendency to form tightly-knit groups           |
+| `path_count_to_fraudulent_nodes`            | Number of known fraud parties reachable within 2–3 hops |
+| `centrality measures (degree, betweenness)` | High values might indicate brokers in fraud rings       |
+
+---
+
+### 🔹 4. **Pattern-Mined Features (Frequent or Rare Itemsets)**
+
+In **FraudMiner**, for example:
+
+| Feature Pattern                     | Description                                                      |
+| ----------------------------------- | ---------------------------------------------------------------- |
+| `{"online", "high_amount"}`         | If these appear together often in fraud, the combo is suspicious |
+| `{"night_txn", "foreign_location"}` | Often mined together from past fraudulent cases                  |
+| `{"multiple_txns", "within_5_min"}` | Temporal pattern associated with fraud                           |
+| `{"new_device", "large_txn"}`       | Combination suggests account takeover                            |
+
+---
+
+## 🧠 How These Were Used in Practice
+
+* **FraudMiner** used frequent itemsets from historical fraud transactions and flagged new transactions with the same patterns.
+* **Neo4j use cases (like PayPal)** use shared attributes (devices, emails, IPs) and graph traversal to flag clusters or rings of colluding accounts.
+* **Phua et al. (2010)** suggest combining behavioral patterns + relational indicators for better performance.
+
+---
+
+## ✅ Next Steps for You
+
+Since you're generating features from Neo4j already, I recommend:
+
+1. **Generate the following graph-based features**:
+
+   * `count_shared_email`
+   * `count_common_accounts`
+   * `clustering coefficient` (via custom Cypher traversal)
+   * `connected_to_known_fraud` (via 2-hop BFS)
+
+2. **Mine frequent and rare combinations** from the feature matrix using:
+
+   * `mlxtend.frequent_patterns.fpgrowth` or `apriori`
+   * Set low support to catch **rare but suspicious** combinations
+
+3. Optionally, **label** each party/account with fraud status and train a classifier with both individual and pattern-mined features.
+
+---
+
+Would you like help writing Cypher queries for any of these graph-based features? Or turning them into a feature matrix for a model?
+
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
 Great question — and it's awesome that you're already generating features from **Neo4j**, because you're halfway to a powerful hybrid approach.
 
 Let’s break it down.
