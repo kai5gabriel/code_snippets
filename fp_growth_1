@@ -1,0 +1,102 @@
+import pandas as pd
+import numpy as np
+from mlxtend.frequent_patterns import fpgrowth, association_rules
+from mlxtend.preprocessing import TransactionEncoder
+from sklearn.preprocessing import KBinsDiscretizer
+import warnings
+
+warnings.filterwarnings('ignore')
+
+# -------------------------------
+# 🔧 Configuration
+# -------------------------------
+USE_KBINS = False     # Set to True to use KBinsDiscretizer instead of qcut
+MAX_ITEMSET_LEN = 3   # Limit FP-Growth itemset size
+TARGET_LABEL = 'is_fraud'
+
+# -------------------------------
+# 🧼 Step 1: Preprocessing function
+# -------------------------------
+def preprocess_data(df):
+    df = df.copy()
+
+    # --- Log-transform skewed columns ---
+    df['amount_log'] = np.log1p(df['amount'])  # log(1 + amount) to handle zeros
+
+    # --- Binning with qcut or KBins ---
+    if USE_KBINS:
+        kbin = KBinsDiscretizer(n_bins=4, encode='ordinal', strategy='quantile')
+        df['amount_bin'] = kbin.fit_transform(df[['amount_log']]).astype(int).astype(str)
+        df['hour_bin'] = kbin.fit_transform(df[['txn_hour']]).astype(int).astype(str)
+        df['amount_bin'] = 'amount_bin=' + df['amount_bin']
+        df['hour_bin'] = 'hour_bin=' + df['hour_bin']
+    else:
+        df['amount_bin'] = pd.qcut(df['amount_log'], q=4, labels=['low', 'med_low', 'med_high', 'high'])
+        df['hour_bin'] = pd.qcut(df['txn_hour'], q=4, labels=['night', 'morning', 'afternoon', 'evening'])
+        df['amount_bin'] = 'amount_bin=' + df['amount_bin'].astype(str)
+        df['hour_bin'] = 'hour_bin=' + df['hour_bin'].astype(str)
+
+    # --- List of categorical features to include ---
+    categorical_columns = ['amount_bin', 'hour_bin', 'device_type', 'txn_type', 'email_domain']
+
+    for col in categorical_columns:
+        if not col.startswith("amount") and not col.startswith("hour"):
+            df[col] = col + '=' + df[col].astype(str)
+
+    return df, categorical_columns
+
+# -------------------------------
+# 🧱 Step 2: Convert to itemsets
+# -------------------------------
+def df_to_transactions(df, categorical_columns):
+    def row_to_items(row):
+        items = [row[col] for col in categorical_columns]
+        if row[TARGET_LABEL] == 1:
+            items.append('fraud')
+        return items
+
+    return df.apply(row_to_items, axis=1).tolist()
+
+# -------------------------------
+# ⚙️ Step 3: FP-Growth & Rule Mining
+# -------------------------------
+def mine_fraud_rules(transactions, min_support_list=[0.01, 0.005, 0.002, 0.001]):
+    te = TransactionEncoder()
+    te_ary = te.fit(transactions).transform(transactions)
+    df_encoded = pd.DataFrame(te_ary, columns=te.columns_)
+
+    for min_support in min_support_list:
+        frequent_itemsets = fpgrowth(df_encoded, min_support=min_support, use_colnames=True, max_len=MAX_ITEMSET_LEN)
+        print(f"Support = {min_support} → {len(frequent_itemsets)} itemsets")
+        if len(frequent_itemsets) <= 100_000:
+            break
+    else:
+        raise MemoryError("Too many itemsets. Increase min_support or reduce itemset length/features.")
+
+    # Keep only rules with 'fraud' in consequents
+    rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=0.6)
+    fraud_rules = rules[
+        rules['consequents'].apply(lambda x: 'fraud' in x) &
+        (rules['lift'] > 1.0)
+    ].copy()
+
+    fraud_rules['fraud_score'] = fraud_rules['confidence'] * fraud_rules['lift']
+    fraud_rules = fraud_rules.sort_values(by='fraud_score', ascending=False)
+
+    return fraud_rules[['antecedents', 'consequents', 'support', 'confidence', 'lift', 'fraud_score']]
+
+# -------------------------------
+# 🧪 Example usage
+# -------------------------------
+
+# Replace this with your actual dataframe
+# df = pd.read_csv('your_dataset.csv')
+
+# Assume df contains: ['amount', 'txn_hour', 'device_type', 'txn_type', 'email_domain', 'is_fraud']
+
+# df = <your data loading step>
+df, cat_cols = preprocess_data(df)
+transactions = df_to_transactions(df, cat_cols)
+fraud_rules_df = mine_fraud_rules(transactions)
+
+print(fraud_rules_df.head(20))
