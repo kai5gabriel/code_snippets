@@ -1,0 +1,112 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import stats
+
+# Get comprehensive statistics for all numeric columns
+def get_comprehensive_stats(df):
+    """Get detailed statistics for DataFrame"""
+    
+    # Basic descriptive statistics
+    basic_stats = df.describe()
+    print("Basic Statistics:")
+    print(basic_stats)
+    
+    # Additional statistics
+    additional_stats = pd.DataFrame({
+        'min': df.min(),
+        'max': df.max(),
+        'mean': df.mean(),
+        'median': df.median(),
+        'std': df.std(),
+        'variance': df.var(),
+        'skewness': df.skew(),
+        'kurtosis': df.kurtosis(),
+        'range': df.max() - df.min(),
+        'iqr': df.quantile(0.75) - df.quantile(0.25)
+    })
+    
+    print("\nAdditional Statistics:")
+    print(additional_stats)
+    
+    return basic_stats, additional_stats
+
+# Example usage
+basic_stats, additional_stats = get_comprehensive_stats(df)
+
+
+def assess_log_scaling_need(df, column_name=None):
+    """Assess whether log scaling is needed for DataFrame columns"""
+    
+    if column_name:
+        columns_to_check = [column_name]
+    else:
+        # Only check numeric columns
+        columns_to_check = df.select_dtypes(include=[np.number]).columns
+    
+    results = {}
+    
+    for col in columns_to_check:
+        if df[col].min() <= 0:
+            print(f"Warning: Column '{col}' contains non-positive values. Cannot apply log transformation.")
+            continue
+            
+        # Calculate key indicators
+        data = df[col].dropna()
+        
+        # 1. Range ratio (max/min)
+        range_ratio = data.max() / data.min()
+        
+        # 2. Skewness
+        skewness = stats.skew(data)
+        
+        # 3. Coefficient of variation
+        cv = data.std() / data.mean()
+        
+        # 4. Check for power law distribution
+        # Count how many values are in different magnitude orders
+        log_data = np.log10(data)
+        magnitude_spread = log_data.max() - log_data.min()
+        
+        # Decision criteria
+        needs_log = False
+        reasons = []
+        
+        if range_ratio > 100:  # Data spans more than 2 orders of magnitude
+            needs_log = True
+            reasons.append(f"Large range ratio: {range_ratio:.2f}")
+            
+        if skewness > 2:  # Highly right-skewed
+            needs_log = True
+            reasons.append(f"High positive skewness: {skewness:.2f}")
+            
+        if magnitude_spread > 2:  # Spans more than 2 orders of magnitude
+            needs_log = True
+            reasons.append(f"Spans {magnitude_spread:.1f} orders of magnitude")
+            
+        if cv > 1:  # High coefficient of variation
+            needs_log = True
+            reasons.append(f"High coefficient of variation: {cv:.2f}")
+        
+        results[col] = {
+            'needs_log_scaling': needs_log,
+            'range_ratio': range_ratio,
+            'skewness': skewness,
+            'cv': cv,
+            'magnitude_spread': magnitude_spread,
+            'reasons': reasons
+        }
+        
+        print(f"\nColumn: {col}")
+        print(f"  Range ratio (max/min): {range_ratio:.2f}")
+        print(f"  Skewness: {skewness:.2f}")
+        print(f"  Coefficient of variation: {cv:.2f}")
+        print(f"  Magnitude spread: {magnitude_spread:.1f} orders")
+        print(f"  Needs log scaling: {needs_log}")
+        if reasons:
+            print(f"  Reasons: {', '.join(reasons)}")
+    
+    return results
+
+# Assess log scaling needs
+log_assessment = assess_log_scaling_need(df)
